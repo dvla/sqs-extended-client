@@ -3,14 +3,14 @@ const uuid = require('uuid/v4');
 
 const ExtendedSqsClient = require('../src/ExtendedSqsClient');
 
-const sqsEndpoint = 'http://localhost:4576';
+const sqsEndpoint = 'http://localhost:4566';
 const sqs = new AWS.SQS({
     apiVersion: '2012-11-05',
     endpoint: sqsEndpoint,
     region: 'eu-west-2',
 });
 
-const s3Endpoint = 'http://localhost:4572';
+const s3Endpoint = 'http://localhost:4566';
 const s3 = new AWS.S3({
     apiVersion: '2006-03-01',
     endpoint: s3Endpoint,
@@ -282,99 +282,6 @@ describe('sqs-extended-client', () => {
         expect(messages3.length).toBe(1);
     });
 
-    it('should change message visibility batch', async () => {
-        // Given
-        const sqsExtendedClientSend = new ExtendedSqsClient(sqs, s3, { bucketName });
-        const sqsExtendedClient = new ExtendedSqsClient(sqs, s3);
-
-        // When
-        await sqsExtendedClientSend
-            .sendMessageBatch({
-                QueueUrl: queueUrl,
-                Entries: [
-                    {
-                        Id: '1',
-                        MessageBody: largeMessageBody,
-                    },
-                    {
-                        Id: '2',
-                        MessageBody: 'small body',
-                    },
-                    {
-                        Id: '3',
-                        MessageBody: largeMessageBody2,
-                    },
-                ],
-            })
-            .promise();
-
-        const { Messages: messages1 } = await sqsExtendedClient
-            .receiveMessage({
-                QueueUrl: queueUrl,
-                MaxNumberOfMessages: 10,
-            })
-            .promise();
-
-        // expect messages to be invisible
-        const { Messages: messages2 } = await sqsExtendedClient
-            .receiveMessage({
-                QueueUrl: queueUrl,
-                MaxNumberOfMessages: 10,
-            })
-            .promise();
-
-        await sqsExtendedClient
-            .changeMessageVisibilityBatch({
-                QueueUrl: queueUrl,
-                Entries: [
-                    {
-                        Id: '1',
-                        ReceiptHandle: messages1[0].ReceiptHandle,
-                        VisibilityTimeout: 0,
-                    },
-                    {
-                        Id: '3',
-                        ReceiptHandle: messages1[2].ReceiptHandle,
-                        VisibilityTimeout: 0,
-                    },
-                ],
-            })
-            .promise();
-
-        // expect 2 messages to be visible again
-        const { Messages: messages3 } = await sqsExtendedClient
-            .receiveMessage({
-                QueueUrl: queueUrl,
-                MaxNumberOfMessages: 10,
-            })
-            .promise();
-
-        await sqsExtendedClient
-            .deleteMessageBatch({
-                QueueUrl: queueUrl,
-                Entries: [
-                    {
-                        Id: '1',
-                        ReceiptHandle: messages1[0].ReceiptHandle,
-                    },
-                    {
-                        Id: '2',
-                        ReceiptHandle: messages1[1].ReceiptHandle,
-                    },
-                    {
-                        Id: '3',
-                        ReceiptHandle: messages1[2].ReceiptHandle,
-                    },
-                ],
-            })
-            .promise();
-
-        // Then
-        expect(messages1.length).toBe(3);
-        expect(messages2).toBe(undefined);
-        expect(messages3.length).toBe(2);
-    });
-
     it('should delete message', async () => {
         // Given
         const sqsExtendedClientSend = new ExtendedSqsClient(sqs, s3, { bucketName });
@@ -402,15 +309,21 @@ describe('sqs-extended-client', () => {
             })
             .promise();
 
+        const { Messages: messages2 } = await sqsExtendedClient
+            .receiveMessage({
+                QueueUrl: queueUrl,
+            })
+            .promise();
+
         await sqsExtendedClient
             .deleteMessage({
                 QueueUrl: queueUrl,
-                ReceiptHandle: messages1[0].ReceiptHandle,
+                ReceiptHandle: messages2[0].ReceiptHandle,
             })
             .promise();
 
         // expect message to be deleted
-        const { Messages: messages2 } = await sqsExtendedClient
+        const { Messages: messages3 } = await sqsExtendedClient
             .receiveMessage({
                 QueueUrl: queueUrl,
             })
@@ -418,7 +331,8 @@ describe('sqs-extended-client', () => {
 
         // Then
         expect(messages1.length).toBe(1);
-        expect(messages2).toBe(undefined);
+        expect(messages2.length).toBe(1);
+        expect(messages3).toBe(undefined);
     });
 
     it('should delete message batch', async () => {
@@ -439,10 +353,6 @@ describe('sqs-extended-client', () => {
                         Id: '2',
                         MessageBody: 'small body',
                     },
-                    {
-                        Id: '3',
-                        MessageBody: largeMessageBody2,
-                    },
                 ],
             })
             .promise();
@@ -455,25 +365,24 @@ describe('sqs-extended-client', () => {
             .promise();
 
         await sqsExtendedClient
-            .changeMessageVisibilityBatch({
+            .changeMessageVisibility({
                 QueueUrl: queueUrl,
-                Entries: [
-                    {
-                        Id: '1',
-                        ReceiptHandle: messages1[0].ReceiptHandle,
-                        VisibilityTimeout: 0,
-                    },
-                    {
-                        Id: '2',
-                        ReceiptHandle: messages1[1].ReceiptHandle,
-                        VisibilityTimeout: 0,
-                    },
-                    {
-                        Id: '3',
-                        ReceiptHandle: messages1[2].ReceiptHandle,
-                        VisibilityTimeout: 0,
-                    },
-                ],
+                ReceiptHandle: messages1[0].ReceiptHandle,
+                VisibilityTimeout: 0,
+            })
+            .promise();
+        await sqsExtendedClient
+            .changeMessageVisibility({
+                QueueUrl: queueUrl,
+                ReceiptHandle: messages1[1].ReceiptHandle,
+                VisibilityTimeout: 0,
+            })
+            .promise();
+
+        const { Messages: messages2 } = await sqsExtendedClient
+            .receiveMessage({
+                QueueUrl: queueUrl,
+                MaxNumberOfMessages: 10,
             })
             .promise();
 
@@ -483,33 +392,27 @@ describe('sqs-extended-client', () => {
                 Entries: [
                     {
                         Id: '1',
-                        ReceiptHandle: messages1[0].ReceiptHandle,
+                        ReceiptHandle: messages2[0].ReceiptHandle,
                     },
                     {
-                        Id: '3',
-                        ReceiptHandle: messages1[2].ReceiptHandle,
+                        Id: '2',
+                        ReceiptHandle: messages2[1].ReceiptHandle,
                     },
                 ],
             })
             .promise();
 
         // expect 2 messages to be deleted
-        const { Messages: messages2 } = await sqsExtendedClient
+        const { Messages: messages3 } = await sqsExtendedClient
             .receiveMessage({
                 QueueUrl: queueUrl,
                 MaxNumberOfMessages: 10,
             })
             .promise();
 
-        await sqsExtendedClient
-            .deleteMessage({
-                QueueUrl: queueUrl,
-                ReceiptHandle: messages1[1].ReceiptHandle,
-            })
-            .promise();
-
         // Then
-        expect(messages1.length).toBe(3);
-        expect(messages2.length).toBe(1);
+        expect(messages1.length).toBe(2);
+        expect(messages2.length).toBe(2);
+        expect(messages3).toBe(undefined);
     });
 });

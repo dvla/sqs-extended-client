@@ -323,7 +323,7 @@ describe('ExtendedSqsClient sendMessage', () => {
                     MessageAttributes: { MessageAttribute: testMessageAttribute },
                     MessageBody: 'body'.repeat(1024 * 1024),
                 })
-                .promise();
+                .promise()
         } catch (err) {
             result = err;
         }
@@ -1115,7 +1115,7 @@ describe('ExtendedSqsClient changeMessageVisibility', () => {
         await client
             .changeMessageVisibility({
                 QueueUrl: 'test-queue',
-                ReceiptHandle: `-..s3Key..-${s3MessageBodyKeyAttribute.StringValue}-..s3Key..-receipthandle`,
+                ReceiptHandle: `-..s3BucketName..-test-bucket-..s3BucketName..--..s3Key..-${mockS3Key}-..s3Key..-receipthandle`,
             })
             .promise();
 
@@ -1144,11 +1144,11 @@ describe('ExtendedSqsClient changeMessageVisibilityBatch', () => {
                 Entries: [
                     {
                         Id: '1',
-                        ReceiptHandle: `-..s3Key..-${s3MessageBodyKeyAttribute.StringValue}-..s3Key..-receipthandle1`,
+                        ReceiptHandle: `-..s3BucketName..-test-bucket-..s3BucketName..--..s3Key..-${mockS3Key}-..s3Key..-receipthandle1`,
                     },
                     {
                         Id: '2',
-                        ReceiptHandle: `-..s3Key..-${s3MessageBodyKeyAttribute.StringValue}-..s3Key..-receipthandle2`,
+                        ReceiptHandle: `-..s3BucketName..-test-bucket-..s3BucketName..--..s3Key..-${mockS3Key}-..s3Key..-receipthandle2`,
                     },
                 ],
             })

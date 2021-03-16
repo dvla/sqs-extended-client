@@ -120,6 +120,8 @@ function invokeFnBeforeRequest(request, fn) {
                         .catch((err) => {
                             if (callback) {
                                 callback(err);
+                                resolve();
+                                return;
                             }
 
                             reject(err);
@@ -128,6 +130,8 @@ function invokeFnBeforeRequest(request, fn) {
                 .catch((fnErr) => {
                     if (callback) {
                         callback(fnErr);
+                        resolve();
+                        return;
                     }
 
                     reject(fnErr);
@@ -152,6 +156,8 @@ function invokeFnAfterRequest(request, fn) {
                         .catch((s3Err) => {
                             if (callback) {
                                 callback(s3Err);
+                                resolve();
+                                return;
                             }
 
                             reject(s3Err);
@@ -160,6 +166,8 @@ function invokeFnAfterRequest(request, fn) {
                 .catch((err) => {
                     if (callback) {
                         callback(err);
+                        resolve();
+                        return;
                     }
 
                     reject(err);
