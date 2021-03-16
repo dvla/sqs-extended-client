@@ -3,14 +3,14 @@ const uuid = require('uuid/v4');
 
 const ExtendedSqsClient = require('../src/ExtendedSqsClient');
 
-const sqsEndpoint = 'http://localhost:4566';
+const sqsEndpoint = 'http://0.0.0.0:4566';
 const sqs = new AWS.SQS({
     apiVersion: '2012-11-05',
     endpoint: sqsEndpoint,
     region: 'eu-west-2',
 });
 
-const s3Endpoint = 'http://localhost:4566';
+const s3Endpoint = 'http://0.0.0.0:4566';
 const s3 = new AWS.S3({
     apiVersion: '2006-03-01',
     endpoint: s3Endpoint,
