@@ -6,7 +6,7 @@
     "license": "MIT",
     "main": "src/ExtendedSqsClient",
     "scripts": {
-        "test": "jest --verbose --coverage src",
+        "test": "jest --verbose src",
         "system-test": "jest system-test"
     },
     "dependencies": {
