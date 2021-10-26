@@ -217,7 +217,7 @@ class ExtendedSqsClient {
 
     middleware() {
         return {
-            before: ({ event }, next) => {
+            before: ({ event }) => {
                 return Promise.all(
                     event.Records.map(async (record) => {
                         const { bucketName, s3MessageKey } = getS3MessageKeyAndBucket(record);
@@ -240,8 +240,6 @@ class ExtendedSqsClient {
                         }
                     })
                 )
-                    .then(() => next())
-                    .catch((err) => next(err));
             },
         };
     }
