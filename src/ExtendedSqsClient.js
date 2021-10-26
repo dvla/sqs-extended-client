@@ -218,7 +218,7 @@ class ExtendedSqsClient {
     middleware() {
         return {
             before: ({ event }, next) => {
-                Promise.all(
+                return Promise.all(
                     event.Records.map(async (record) => {
                         const { bucketName, s3MessageKey } = getS3MessageKeyAndBucket(record);
 
