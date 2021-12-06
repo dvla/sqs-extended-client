@@ -1192,9 +1192,7 @@ describe('ExtendedSqsClient middleware', () => {
         const middleware = new ExtendedSqsClient({}, {}, { bucketName: 'test-bucket' }).middleware();
 
         // When
-        await new Promise((resolve) => {
-            middleware.before(handler, () => resolve());
-        });
+        await middleware.before(handler);
 
         // Then
         expect(handler.event.Records).toEqual([
@@ -1235,9 +1233,7 @@ describe('ExtendedSqsClient middleware', () => {
         const middleware = new ExtendedSqsClient({}, s3, { bucketName: 'test-bucket' }).middleware();
 
         // When
-        await new Promise((resolve) => {
-            middleware.before(handler, () => resolve());
-        });
+        await middleware.before(handler)
 
         // Then
         expect(s3.getObject).toHaveBeenCalledTimes(1);
@@ -1288,9 +1284,7 @@ describe('ExtendedSqsClient middleware', () => {
         }).middleware();
 
         // When
-        await new Promise((resolve) => {
-            middleware.before(handler, () => resolve());
-        });
+        await middleware.before(handler);
 
         // Then
         expect(s3.getObject).toHaveBeenCalledTimes(1);
