@@ -1,6 +1,6 @@
 {
     "name": "sqs-extended-client",
-    "version": "0.0.3",
+    "version": "0.1.0",
     "description": "Extended SQS client library for managing large AWS SQS message payloads using S3",
     "author": "Ian Wang, DVLA",
     "license": "MIT",
