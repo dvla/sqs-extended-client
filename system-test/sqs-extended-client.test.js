@@ -1,17 +1,22 @@
-const AWS = require('aws-sdk');
+const {
+          S3
+      } = require("@aws-sdk/client-s3"),
+      {
+          SQS
+      } = require("@aws-sdk/client-sqs");
 const uuid = require('uuid/v4');
 
 const ExtendedSqsClient = require('../src/ExtendedSqsClient');
 
 const sqsEndpoint = process.env.SQS_ENDPOINT || 'http://localhost:4566';
-const sqs = new AWS.SQS({
+const sqs = new SQS({
     apiVersion: '2012-11-05',
     endpoint: sqsEndpoint,
     region: 'eu-west-2',
 });
 
 const s3Endpoint = process.env.S3_ENDPOINT || 'http://localhost:4566';
-const s3 = new AWS.S3({
+const s3 = new S3({
     apiVersion: '2006-03-01',
     endpoint: s3Endpoint,
     region: 'eu-west-2',
@@ -27,17 +32,17 @@ const largeMessageBody = 'large body'.repeat(1024 * 1024);
 const largeMessageBody2 = 'large body2'.repeat(1024 * 1024);
 
 beforeEach(async () => {
-    queueUrl = (await sqs.createQueue({ QueueName: uuid() }).promise()).QueueUrl;
-    await s3.createBucket({ Bucket: bucketName }).promise();
+    queueUrl = (await sqs.createQueue({ QueueName: uuid() })).QueueUrl;
+    await s3.createBucket({ Bucket: bucketName });
 });
 
 afterEach(async () => {
-    await sqs.deleteQueue({ QueueUrl: queueUrl }).promise();
-    await s3.deleteBucket({ Bucket: bucketName }).promise();
+    await sqs.deleteQueue({ QueueUrl: queueUrl });
+    await s3.deleteBucket({ Bucket: bucketName });
 });
 
 async function s3ObjectCount() {
-    return (await s3.listObjectsV2({ Bucket: bucketName }).promise()).KeyCount;
+    return (await s3.listObjectsV2({ Bucket: bucketName })).KeyCount;
 }
 
 describe('sqs-extended-client', () => {

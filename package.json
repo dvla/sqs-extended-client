@@ -15,10 +15,11 @@
         "system-test": "jest --testPathPattern='system-test/.*'"
     },
     "dependencies": {
+        "@aws-sdk/client-s3": "^3.359.0",
+        "@aws-sdk/client-sqs": "^3.359.0",
         "uuid": "^3.4.0"
     },
     "devDependencies": {
-        "aws-sdk": "^2.725.0",
         "jest-cli": "^25.1.0"
     },
     "jest": {
