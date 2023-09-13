@@ -15,23 +15,25 @@ const s3MessageBodyKeyAttribute = {
     StringValue: `(test-bucket)${mockS3Key}`,
 };
 
-describe('ExtendedSqsClient sendMessage', () => {
-    it('should send small message directly', async () => {
-        // Given
-        const sqs = {
-            sendMessage: jest.fn(() => ({ promise: () => Promise.resolve('success') })),
-        };
+afterEach(() => {
+  jest.resetAllMocks();
+})
 
+describe('ExtendedSqsClient sendMessage', () => {
+    it.concurrent.each([
+        {  sendMessage: jest.fn(() => ({ promise: () => Promise.resolve('success') })) },
+        {  sendMessage: jest.fn(() => Promise.resolve('success')) }
+    ])('should send small message directly - %#', async (sqs) => {
+        // Given
         const client = new ExtendedSqsClient(sqs, {}, { bucketName: 'test-bucket' });
 
         // When
-        await client
-            .sendMessage({
-                QueueUrl: 'test-queue',
-                MessageAttributes: { MessageAttribute: testMessageAttribute },
-                MessageBody: 'small message body',
-            })
-            .promise();
+        const result = client.sendMessage({
+            QueueUrl: 'test-queue',
+            MessageAttributes: { MessageAttribute: testMessageAttribute },
+            MessageBody: 'small message body',
+        })
+        'promise' in result ? await result.promise() : await result;
 
         // Then
         expect(sqs.sendMessage).toHaveBeenCalledTimes(1);
@@ -42,32 +44,29 @@ describe('ExtendedSqsClient sendMessage', () => {
         });
     });
 
-    it('should use S3 to send large message (using promise())', async () => {
-        // Given
-        const sqsResponse = { messageId: 'test message id' };
-
-        const sqs = {
-            sendMessage: jest.fn(() => ({ promise: () => Promise.resolve(sqsResponse) })),
-        };
-        const s3 = {
-            putObject: jest.fn(() => ({ promise: () => Promise.resolve() })),
-        };
-
+    it.concurrent.each([
+        [
+            {  sendMessage: jest.fn(() => ({ promise: () => Promise.resolve({ messageId: 'test message id' }) })) },
+            {  putObject: jest.fn(() => ({ promise: () => Promise.resolve() })) }
+        ],
+        [
+            {  sendMessage: jest.fn(() => Promise.resolve({ messageId: 'test message id' })) },
+            {  putObject: jest.fn(() => Promise.resolve()) }
+        ]
+    ])('should use S3 to send large message (using promise()) - %#', async (sqs, s3) => {
         const client = new ExtendedSqsClient(sqs, s3, { bucketName: 'test-bucket' });
         const largeMessageBody = 'body'.repeat(1024 * 1024);
 
         // When
-        const result = await client
-            .sendMessage({
-                QueueUrl: 'test-queue',
-                MessageAttributes: { MessageAttribute: testMessageAttribute },
-                MessageBody: largeMessageBody,
-            })
-            .promise();
+        const result = client.sendMessage({
+            QueueUrl: 'test-queue',
+            MessageAttributes: { MessageAttribute: testMessageAttribute },
+            MessageBody: largeMessageBody,
+        })
+        const actual = 'promise' in result ? await result.promise() : await result;
 
         // Then
-        expect(result).toEqual(sqsResponse);
-
+        expect(actual).toEqual({ messageId: 'test message id' });
         expect(s3.putObject).toHaveBeenCalledTimes(1);
         expect(s3.putObject.mock.calls[0][0]).toEqual({
             Bucket: 'test-bucket',
@@ -86,17 +85,17 @@ describe('ExtendedSqsClient sendMessage', () => {
         });
     });
 
-    it('should use S3 to send large message (using callback)', async () => {
+    it.concurrent.each([
+        [
+            {  sendMessage: jest.fn(() => ({ promise: () => Promise.resolve({ messageId: 'test message id' }) })) },
+            {  putObject: jest.fn(() => ({ promise: () => Promise.resolve() })) },
+        ],
+        [
+            {  sendMessage: jest.fn(() => Promise.resolve({ messageId: 'test message id' })) },
+            {  putObject: jest.fn(() => Promise.resolve()) },
+        ]
+    ])('should use S3 to send large message (using callback) - %#', async (sqs, s3) => {
         // Given
-        const sqsResponse = { messageId: 'test message id' };
-
-        const sqs = {
-            sendMessage: jest.fn(() => ({ promise: () => Promise.resolve(sqsResponse) })),
-        };
-        const s3 = {
-            putObject: jest.fn(() => ({ promise: () => Promise.resolve() })),
-        };
-
         const client = new ExtendedSqsClient(sqs, s3, { bucketName: 'test-bucket' });
         const largeMessageBody = 'body'.repeat(1024 * 1024);
 
@@ -115,8 +114,7 @@ describe('ExtendedSqsClient sendMessage', () => {
         });
 
         // Then
-        expect(result).toEqual(sqsResponse);
-
+        expect(result).toEqual({ messageId: 'test message id' });
         expect(s3.putObject).toHaveBeenCalledTimes(1);
         expect(s3.putObject.mock.calls[0][0]).toEqual({
             Bucket: 'test-bucket',
@@ -135,7 +133,7 @@ describe('ExtendedSqsClient sendMessage', () => {
         });
     });
 
-    it('should use S3 to send large message (using send() callback)', async () => {
+    it('should use S3 to send large message (using send() callback) - only compatible with aws-sdk v2', async () => {
         // Given
         const sqsResponse = { messageId: 'test message id' };
 
@@ -181,28 +179,29 @@ describe('ExtendedSqsClient sendMessage', () => {
         });
     });
 
-    it('should use s3 to send small message when alwaysUseS3=true', async () => {
+    it.concurrent.each([
+        [
+            {  sendMessage: jest.fn(() => ({ promise: () => Promise.resolve('success') })) },
+            {  putObject: jest.fn(() => ({ promise: () => Promise.resolve() })) },
+        ],
+        [
+            {  sendMessage: jest.fn(() => Promise.resolve('success')) },
+            {  putObject: jest.fn(() => Promise.resolve()) },
+        ]
+    ])('should use s3 to send small message when alwaysUseS3=true - %#', async (sqs, s3) => {
         // Given
-        const sqs = {
-            sendMessage: jest.fn(() => ({ promise: () => Promise.resolve('success') })),
-        };
-        const s3 = {
-            putObject: jest.fn(() => ({ promise: () => Promise.resolve() })),
-        };
-
         const client = new ExtendedSqsClient(sqs, s3, {
             bucketName: 'test-bucket',
             alwaysUseS3: true,
         });
 
         // When
-        await client
-            .sendMessage({
-                QueueUrl: 'test-queue',
-                MessageAttributes: { MessageAttribute: testMessageAttribute },
-                MessageBody: 'small message body',
-            })
-            .promise();
+        const result = client.sendMessage({
+            QueueUrl: 'test-queue',
+            MessageAttributes: { MessageAttribute: testMessageAttribute },
+            MessageBody: 'small message body',
+        })
+        'promise' in result ? await result.promise() : await result;
 
         // Then
         expect(s3.putObject).toHaveBeenCalledTimes(1);
@@ -223,15 +222,17 @@ describe('ExtendedSqsClient sendMessage', () => {
         });
     });
 
-    it('should apply custom sendTransform function', async () => {
+    it.concurrent.each([
+        [
+            {  sendMessage: jest.fn(() => ({ promise: () => Promise.resolve('success') })) },
+            {  putObject: jest.fn(() => ({ promise: () => Promise.resolve() })) },
+        ],
+        [
+            {  sendMessage: jest.fn(() => Promise.resolve('success')) },
+            {  putObject: jest.fn(() => Promise.resolve()) },
+        ]
+    ])('should apply custom sendTransform function - %#', async (sqs, s3) => {
         // Given
-        const sqs = {
-            sendMessage: jest.fn(() => ({ promise: () => Promise.resolve('success') })),
-        };
-        const s3 = {
-            putObject: jest.fn(() => ({ promise: () => Promise.resolve() })),
-        };
-
         const client = new ExtendedSqsClient(sqs, s3, {
             bucketName: 'test-bucket',
             sendTransform: (message) => ({
@@ -241,12 +242,11 @@ describe('ExtendedSqsClient sendMessage', () => {
         });
 
         // When
-        await client
-            .sendMessage({
-                QueueUrl: 'test-queue',
-                MessageBody: 'message body',
-            })
-            .promise();
+        const result = client.sendMessage({
+            QueueUrl: 'test-queue',
+            MessageBody: 'message body',
+        })
+        'promise' in result ? await result.promise() : await result;
 
         // Then
         expect(s3.putObject).toHaveBeenCalledTimes(1);
@@ -266,28 +266,29 @@ describe('ExtendedSqsClient sendMessage', () => {
         });
     });
 
-    it('should respect existing S3MessageBodyKey', async () => {
+    it.concurrent.each([
+        [
+            {  sendMessage: jest.fn(() => ({ promise: () => Promise.resolve('success') })) },
+            {  putObject: jest.fn(() => ({ promise: () => Promise.resolve() })) },
+        ],
+        [
+            {  sendMessage: jest.fn(() => Promise.resolve('success')) },
+            {  putObject: jest.fn(() => Promise.resolve()) },
+        ]
+    ])('should respect existing S3MessageBodyKey - %#', async (sqs, s3) => {
         // Given
-        const sqs = {
-            sendMessage: jest.fn(() => ({ promise: () => Promise.resolve('success') })),
-        };
-        const s3 = {
-            putObject: jest.fn(() => ({ promise: () => Promise.resolve() })),
-        };
-
         const client = new ExtendedSqsClient(sqs, s3, {
             bucketName: 'test-bucket',
             alwaysUseS3: true,
         });
 
         // When
-        await client
-            .sendMessage({
-                QueueUrl: 'test-queue',
-                MessageAttributes: { S3MessageBodyKey: s3MessageBodyKeyAttribute },
-                MessageBody: 'message body',
-            })
-            .promise();
+        const result = client.sendMessage({
+            QueueUrl: 'test-queue',
+            MessageAttributes: { S3MessageBodyKey: s3MessageBodyKeyAttribute },
+            MessageBody: 'message body',
+        })
+        'promise' in result ? await result.promise() : await result;
 
         // Then
         expect(sqs.sendMessage).toHaveBeenCalledTimes(1);
@@ -302,28 +303,29 @@ describe('ExtendedSqsClient sendMessage', () => {
         expect(s3.putObject).toHaveBeenCalledTimes(0);
     });
 
-    it('should throw SQS error (using promise())', async () => {
+    it.concurrent.each([
+        [
+            {  sendMessage: jest.fn(() => ({ promise: () => Promise.reject(new Error('test error')) })) },
+            {  putObject: jest.fn(() => ({ promise: () => Promise.resolve() })) },
+        ],
+        [
+            {  sendMessage: jest.fn(() => Promise.reject(new Error('test error'))) },
+            {  putObject: jest.fn(() => Promise.resolve()) },
+        ]
+    ])('should throw SQS error (using promise())', async (sqs, s3) => {
         // Given
-        const sqs = {
-            sendMessage: jest.fn(() => ({ promise: () => Promise.reject(new Error('test error')) })),
-        };
-        const s3 = {
-            putObject: jest.fn(() => ({ promise: () => Promise.resolve() })),
-        };
-
         const client = new ExtendedSqsClient(sqs, s3, { bucketName: 'test-bucket' });
 
         // When
         let result;
 
         try {
-            await client
-                .sendMessage({
-                    QueueUrl: 'test-queue',
-                    MessageAttributes: { MessageAttribute: testMessageAttribute },
-                    MessageBody: 'body'.repeat(1024 * 1024),
-                })
-                .promise()
+            const result = client.sendMessage({
+                QueueUrl: 'test-queue',
+                MessageAttributes: { MessageAttribute: testMessageAttribute },
+                MessageBody: 'body'.repeat(1024 * 1024),
+            })
+            'promise' in result ? await result.promise() : await result;
         } catch (err) {
             result = err;
         }
@@ -332,15 +334,17 @@ describe('ExtendedSqsClient sendMessage', () => {
         expect(result.message).toEqual('test error');
     });
 
-    it('should throw SQS error (using callback)', async () => {
+    it.concurrent.each([
+        [
+            {  sendMessage: jest.fn(() => ({ promise: () => Promise.reject(new Error('test error')) })) },
+            {  putObject: jest.fn(() => ({ promise: () => Promise.resolve() })) },
+        ],
+        [
+            {  sendMessage: jest.fn(() => Promise.reject(new Error('test error'))) },
+            {  putObject: jest.fn(() => Promise.resolve()) },
+        ]
+    ])('should throw SQS error (using callback) - #i', async (sqs, s3) => {
         // Given
-        const sqs = {
-            sendMessage: jest.fn(() => ({ promise: () => Promise.reject(new Error('test error')) })),
-        };
-        const s3 = {
-            putObject: jest.fn(() => ({ promise: () => Promise.resolve() })),
-        };
-
         const client = new ExtendedSqsClient(sqs, s3, { bucketName: 'test-bucket' });
 
         // When
@@ -367,28 +371,29 @@ describe('ExtendedSqsClient sendMessage', () => {
         expect(result.message).toEqual('test error');
     });
 
-    it('should throw S3 error (using promise())', async () => {
+    it.concurrent.each([
+        [
+            {  sendMessage: jest.fn(() => ({ promise: () => Promise.resolve({}) })) },
+            {  putObject: jest.fn(() => ({ promise: () => Promise.reject(new Error('test error')) })) },
+        ],
+        [
+            {  sendMessage: jest.fn(() => Promise.resolve({})) },
+            {  putObject: jest.fn(() => Promise.reject(new Error('test error'))) },
+        ]
+    ])('should throw S3 error (using promise()) - %#', async (sqs, s3) => {
         // Given
-        const sqs = {
-            sendMessage: jest.fn(() => ({})),
-        };
-        const s3 = {
-            putObject: jest.fn(() => ({ promise: () => Promise.reject(new Error('test error')) })),
-        };
-
         const client = new ExtendedSqsClient(sqs, s3, { bucketName: 'test-bucket' });
 
         // When
         let result;
 
         try {
-            await client
-                .sendMessage({
-                    QueueUrl: 'test-queue',
-                    MessageAttributes: { MessageAttribute: testMessageAttribute },
-                    MessageBody: 'body'.repeat(1024 * 1024),
-                })
-                .promise();
+            const result = client.sendMessage({
+                QueueUrl: 'test-queue',
+                MessageAttributes: { MessageAttribute: testMessageAttribute },
+                MessageBody: 'body'.repeat(1024 * 1024),
+            })
+            'promise' in result ? await result.promise() : await result;
         } catch (err) {
             result = err;
         }
@@ -397,15 +402,17 @@ describe('ExtendedSqsClient sendMessage', () => {
         expect(result.message).toEqual('test error');
     });
 
-    it('should throw S3 error (using callback)', async () => {
+    it.concurrent.each([
+        [
+            {  sendMessage: jest.fn(() => ({ promise: () => Promise.resolve({}) })) },
+            {  putObject: jest.fn(() => ({ promise: () => Promise.reject(new Error('test error')) })) },
+        ],
+        [
+            {  sendMessage: jest.fn(() => Promise.resolve({})) },
+            {  putObject: jest.fn(() => Promise.reject(new Error('test error'))) },
+        ]
+    ])('should throw S3 error (using callback) - %#', async (sqs, s3) => {
         // Given
-        const sqs = {
-            sendMessage: jest.fn(() => ({})),
-        };
-        const s3 = {
-            putObject: jest.fn(() => ({ promise: () => Promise.reject(new Error('test error')) })),
-        };
-
         const client = new ExtendedSqsClient(sqs, s3, { bucketName: 'test-bucket' });
 
         // When
@@ -434,40 +441,41 @@ describe('ExtendedSqsClient sendMessage', () => {
 });
 
 describe('ExtendedSqsClient sendMessageBatch', () => {
-    it('should batch send messages', async () => {
+    it.concurrent.each([
+        [
+            {  sendMessageBatch: jest.fn(() => ({ promise: () => Promise.resolve('success') })) },
+            {  putObject: jest.fn(() => ({ promise: () => Promise.resolve() })) },
+        ],
+        [
+            {  sendMessageBatch: jest.fn(() => Promise.resolve('success')) },
+            {  putObject: jest.fn(() => Promise.resolve()) },
+        ]
+    ])('should batch send messages - %#', async (sqs, s3) => {
         // Given
-        const sqs = {
-            sendMessageBatch: jest.fn(() => ({ promise: () => Promise.resolve('success') })),
-        };
-        const s3 = {
-            putObject: jest.fn(() => ({ promise: () => Promise.resolve() })),
-        };
-
         const client = new ExtendedSqsClient(sqs, s3, { bucketName: 'test-bucket' });
 
         const largeMessageBody1 = 'body1'.repeat(1024 * 1024);
         const largeMessageBody2 = 'body2'.repeat(1024 * 1024);
 
         // When
-        await client
-            .sendMessageBatch({
-                QueueUrl: 'test-queue',
-                Entries: [
-                    {
-                        Id: '1',
-                        MessageBody: largeMessageBody1,
-                    },
-                    {
-                        Id: '2',
-                        MessageBody: 'small message body',
-                    },
-                    {
-                        Id: '3',
-                        MessageBody: largeMessageBody2,
-                    },
-                ],
-            })
-            .promise();
+        const result = client.sendMessageBatch({
+            QueueUrl: 'test-queue',
+            Entries: [
+                {
+                    Id: '1',
+                    MessageBody: largeMessageBody1,
+                },
+                {
+                    Id: '2',
+                    MessageBody: 'small message body',
+                },
+                {
+                    Id: '3',
+                    MessageBody: largeMessageBody2,
+                },
+            ],
+        })
+        'promise' in result ? await result.promise() : await result;
 
         // Then
         expect(s3.putObject).toHaveBeenCalledTimes(2);
@@ -506,7 +514,14 @@ describe('ExtendedSqsClient sendMessageBatch', () => {
 });
 
 describe('ExtendedSqsClient receiveMessage', () => {
-    it('should receive a message not using S3', async () => {
+    it.concurrent.each([
+        [
+            (messages) => ({  receiveMessage: jest.fn(() => ({ promise: () => Promise.resolve(messages) })) }),
+        ],
+        [
+            (messages) => ({  receiveMessage: jest.fn(() => Promise.resolve(messages)) }),
+        ]
+    ])('should receive a message not using S3 - %#', async (sqsMocker) => {
         // Given
         const messages = {
             Messages: [
@@ -519,19 +534,15 @@ describe('ExtendedSqsClient receiveMessage', () => {
                 },
             ],
         };
-        const sqs = {
-            receiveMessage: jest.fn(() => ({ promise: () => Promise.resolve(messages) })),
-        };
-
+        const sqs = sqsMocker(messages);
         const client = new ExtendedSqsClient(sqs, {});
 
         // When
-        const response = await client
-            .receiveMessage({
-                QueueUrl: 'test-queue',
-                MessageAttributeNames: ['MessageAttribute'],
-            })
-            .promise();
+        const result = client.receiveMessage({
+            QueueUrl: 'test-queue',
+            MessageAttributeNames: ['MessageAttribute'],
+        })
+        const actual = 'promise' in result ? await result.promise() : await result;
 
         // Then
         expect(sqs.receiveMessage).toHaveBeenCalledTimes(1);
@@ -540,10 +551,21 @@ describe('ExtendedSqsClient receiveMessage', () => {
             QueueUrl: 'test-queue',
         });
 
-        expect(response).toEqual(messages);
+        expect(actual).toEqual(messages);
     });
 
-    it('should receive a message using S3 (using promise())', async () => {
+    it.concurrent.each([
+        [
+            (messages) => ({  receiveMessage: jest.fn(() => ({ promise: () => Promise.resolve(messages) })) }),
+            (content) => ({  getObject: jest.fn(() => ({ promise: () => Promise.resolve(content) })) }),
+            { Body: Buffer.from('message body') }
+        ],
+        [
+            (messages) => ({  receiveMessage: jest.fn(() => Promise.resolve(messages)) }),
+            (content) => ({  getObject: jest.fn(() => Promise.resolve(content)) }),
+            { Body: { transformToString: jest.fn(async () => 'message body') }}
+        ]
+    ])('should receive a message using S3 (using promise()) - %#', async (sqsMocker, s3Mocker, s3Content) => {
         // Given
         const messages = {
             Messages: [
@@ -557,26 +579,17 @@ describe('ExtendedSqsClient receiveMessage', () => {
                 },
             ],
         };
-        const sqs = {
-            receiveMessage: jest.fn(() => ({ promise: () => Promise.resolve(messages) })),
-        };
-
-        const s3Content = {
-            Body: Buffer.from('message body'),
-        };
-        const s3 = {
-            getObject: jest.fn(() => ({ promise: () => Promise.resolve(s3Content) })),
-        };
+        const sqs = sqsMocker(messages);
+        const s3 = s3Mocker(s3Content);
 
         const client = new ExtendedSqsClient(sqs, s3);
 
         // When
-        const response = await client
-            .receiveMessage({
-                QueueUrl: 'test-queue',
-                MessageAttributeNames: ['MessageAttribute'],
-            })
-            .promise();
+        const result = await client.receiveMessage({
+            QueueUrl: 'test-queue',
+            MessageAttributeNames: ['MessageAttribute'],
+        })
+        const actual = 'promise' in result ? await result.promise() : await result;
 
         // Then
         expect(sqs.receiveMessage).toHaveBeenCalledTimes(1);
@@ -590,8 +603,11 @@ describe('ExtendedSqsClient receiveMessage', () => {
             Bucket: 'test-bucket',
             Key: mockS3Key,
         });
+        if ('transformToString' in s3Content.Body) {
+            expect(s3Content.Body.transformToString).toHaveBeenCalledTimes(1);
+        }
 
-        expect(response).toEqual({
+        expect(actual).toEqual({
             Messages: [
                 {
                     Body: 'message body',
@@ -605,7 +621,18 @@ describe('ExtendedSqsClient receiveMessage', () => {
         });
     });
 
-    it('should receive a message using S3 (using callback)', async () => {
+    it.concurrent.each([
+        [
+            (messages) => ({  receiveMessage: jest.fn(() => ({ promise: () => Promise.resolve(messages) })) }),
+            (content) => ({  getObject: jest.fn(() => ({ promise: () => Promise.resolve(content) })) }),
+            { Body: Buffer.from('message body') }
+        ],
+        [
+            (messages) => ({  receiveMessage: jest.fn(() => Promise.resolve(messages)) }),
+            (content) => ({  getObject: jest.fn(() => Promise.resolve(content)) }),
+            { Body: { transformToString: jest.fn(async () => 'message body') }}
+        ]
+    ])('should receive a message using S3 (using callback) - %#', async (sqsMocker, s3Mocker, s3Content) => {
         // Given
         const messages = {
             Messages: [
@@ -619,16 +646,8 @@ describe('ExtendedSqsClient receiveMessage', () => {
                 },
             ],
         };
-        const sqs = {
-            receiveMessage: jest.fn(() => ({ promise: () => Promise.resolve(messages) })),
-        };
-
-        const s3Content = {
-            Body: Buffer.from('message body'),
-        };
-        const s3 = {
-            getObject: jest.fn(() => ({ promise: () => Promise.resolve(s3Content) })),
-        };
+        const sqs = sqsMocker(messages);
+        const s3 = s3Mocker(s3Content);
 
         const client = new ExtendedSqsClient(sqs, s3);
 
@@ -657,6 +676,9 @@ describe('ExtendedSqsClient receiveMessage', () => {
             Bucket: 'test-bucket',
             Key: mockS3Key,
         });
+        if ('transformToString' in s3Content.Body) {
+            expect(s3Content.Body.transformToString).toHaveBeenCalledTimes(1);
+        }
 
         expect(response).toEqual({
             Messages: [
@@ -672,7 +694,7 @@ describe('ExtendedSqsClient receiveMessage', () => {
         });
     });
 
-    it('should receive a message using S3 (using send() callback)', async () => {
+    it('should receive a message using S3 (using send() callback) - only compatible with aws-sdk v2', async () => {
         // Given
         const messages = {
             Messages: [
@@ -738,7 +760,18 @@ describe('ExtendedSqsClient receiveMessage', () => {
         });
     });
 
-    it('should apply custom receiveTransform function', async () => {
+    it.concurrent.each([
+        [
+            (messages) => ({  receiveMessage: jest.fn(() => ({ promise: () => Promise.resolve(messages) })) }),
+            (content) => ({  getObject: jest.fn(() => ({ promise: () => Promise.resolve(content) })) }),
+            { Body: Buffer.from('custom s3 content') }
+        ],
+        [
+            (messages) => ({  receiveMessage: jest.fn(() => Promise.resolve(messages)) }),
+            (content) => ({  getObject: jest.fn(() => Promise.resolve(content)) }),
+            { Body: { transformToString: jest.fn(async () => 'custom s3 content') }}
+        ]
+    ])('should apply custom receiveTransform function - %#', async (sqsMocker, s3Mocker, s3Response) => {
         // Given
         const messages = {
             Messages: [
@@ -751,27 +784,18 @@ describe('ExtendedSqsClient receiveMessage', () => {
                 },
             ],
         };
-        const sqs = {
-            receiveMessage: jest.fn(() => ({ promise: () => Promise.resolve(messages) })),
-        };
-
-        const s3Response = {
-            Body: Buffer.from('custom s3 content'),
-        };
-        const s3 = {
-            getObject: jest.fn(() => ({ promise: () => Promise.resolve(s3Response) })),
-        };
+        const sqs = sqsMocker(messages);
+        const s3 = s3Mocker(s3Response);
 
         const client = new ExtendedSqsClient(sqs, s3, {
             receiveTransform: (message, s3Content) => `${message.Body} - ${s3Content}`,
         });
 
         // When
-        const response = await client
-            .receiveMessage({
-                QueueUrl: 'test-queue',
-            })
-            .promise();
+        const result = client.receiveMessage({
+            QueueUrl: 'test-queue',
+        })
+        const actual = 'promise' in result ? await result.promise() : await result;
 
         // Then
         expect(sqs.receiveMessage).toHaveBeenCalledTimes(1);
@@ -786,7 +810,7 @@ describe('ExtendedSqsClient receiveMessage', () => {
             Key: mockS3Key,
         });
 
-        expect(response).toEqual({
+        expect(actual).toEqual({
             Messages: [
                 {
                     Body: 'custom message body - custom s3 content',
@@ -799,27 +823,28 @@ describe('ExtendedSqsClient receiveMessage', () => {
         });
     });
 
-    it('should throw SQS error (using promise())', async () => {
+    it.concurrent.each([
+        [
+            { receiveMessage: jest.fn(() => ({ promise: () => Promise.reject(new Error('test error')) })) },
+            { getObject: jest.fn(() => ({ promise: () => Promise.resolve({}) })) },
+        ],
+        [
+            { receiveMessage: jest.fn(() => Promise.reject(new Error('test error'))) },
+            { getObject: jest.fn(() => Promise.resolve({})) },
+        ]
+    ])('should throw SQS error (using promise()) = %#', async (sqs, s3) => {
         // Given
-        const sqs = {
-            receiveMessage: jest.fn(() => ({ promise: () => Promise.reject(new Error('test error')) })),
-        };
-        const s3 = {
-            getObject: jest.fn(() => ({})),
-        };
-
         const client = new ExtendedSqsClient(sqs, s3, { bucketName: 'test-bucket' });
 
         // When
         let result;
 
         try {
-            await client
-                .receiveMessage({
-                    QueueUrl: 'test-queue',
-                    MessageAttributeNames: ['MessageAttribute'],
-                })
-                .promise();
+            const result = client.receiveMessage({
+                QueueUrl: 'test-queue',
+                MessageAttributeNames: ['MessageAttribute'],
+            })
+            'promise' in result ? await result.promise() : await result;
         } catch (err) {
             result = err;
         }
@@ -828,15 +853,17 @@ describe('ExtendedSqsClient receiveMessage', () => {
         expect(result.message).toEqual('test error');
     });
 
-    it('should throw SQS error (using callback)', async () => {
+    it.concurrent.each([
+        [
+            { receiveMessage: jest.fn(() => ({ promise: () => Promise.reject(new Error('test error')) })) },
+            { getObject: jest.fn(() => ({ promise: () => Promise.resolve({}) })) },
+        ],
+        [
+            { receiveMessage: jest.fn(() => Promise.reject(new Error('test error'))) },
+            { getObject: jest.fn(() => Promise.resolve({})) },
+        ]
+    ])('should throw SQS error (using callback) - %#', async (sqs, s3) => {
         // Given
-        const sqs = {
-            receiveMessage: jest.fn(() => ({ promise: () => Promise.reject(new Error('test error')) })),
-        };
-        const s3 = {
-            getObject: jest.fn(() => ({})),
-        };
-
         const client = new ExtendedSqsClient(sqs, s3, { bucketName: 'test-bucket' });
 
         // When
@@ -862,8 +889,16 @@ describe('ExtendedSqsClient receiveMessage', () => {
         expect(result.message).toEqual('test error');
     });
 
-    it('should throw S3 error (using promise())', async () => {
-        // Given
+    it.concurrent.each([
+        [
+            (messages) => ({  receiveMessage: jest.fn(() => ({ promise: () => Promise.resolve(messages) })) }),
+            { getObject: jest.fn(() => ({ promise: () => Promise.reject(new Error('test error')) })) },
+        ],
+        [
+            (messages) => ({  receiveMessage: jest.fn(() => Promise.resolve(messages)) }),
+            { getObject: jest.fn(() => Promise.reject(new Error('test error'))) },
+        ]
+    ])('should throw S3 error (using promise()) - %#', async (sqsMocker, s3) => {
         // Given
         const messages = {
             Messages: [
@@ -877,26 +912,18 @@ describe('ExtendedSqsClient receiveMessage', () => {
                 },
             ],
         };
-        const sqs = {
-            receiveMessage: jest.fn(() => ({ promise: () => Promise.resolve(messages) })),
-        };
-
-        const s3 = {
-            getObject: jest.fn(() => ({ promise: () => Promise.reject(new Error('test error')) })),
-        };
-
+        const sqs = sqsMocker(messages);
         const client = new ExtendedSqsClient(sqs, s3, { bucketName: 'test-bucket' });
 
         // When
         let result;
 
         try {
-            await client
-                .receiveMessage({
-                    QueueUrl: 'test-queue',
-                    MessageAttributeNames: ['MessageAttribute'],
-                })
-                .promise();
+            const result = client.receiveMessage({
+                QueueUrl: 'test-queue',
+                MessageAttributeNames: ['MessageAttribute'],
+            })
+            'promise' in result ? await result.promise() : await result;
         } catch (err) {
             result = err;
         }
@@ -905,7 +932,16 @@ describe('ExtendedSqsClient receiveMessage', () => {
         expect(result.message).toEqual('test error');
     });
 
-    it('should throw S3 error (using callback)', async () => {
+    it.concurrent.each([
+        [
+            (messages) => ({  receiveMessage: jest.fn(() => ({ promise: () => Promise.resolve(messages) })) }),
+            { getObject: jest.fn(() => ({ promise: () => Promise.reject(new Error('test error')) })) },
+        ],
+        [
+            (messages) => ({  receiveMessage: jest.fn(() => Promise.resolve(messages)) }),
+            { getObject: jest.fn(() => Promise.reject(new Error('test error'))) },
+        ]
+    ])('should throw S3 error (using callback) - %#', async (sqsMocker, s3) => {
         // Given
         // Given
         const messages = {
@@ -920,14 +956,7 @@ describe('ExtendedSqsClient receiveMessage', () => {
                 },
             ],
         };
-        const sqs = {
-            receiveMessage: jest.fn(() => ({ promise: () => Promise.resolve(messages) })),
-        };
-
-        const s3 = {
-            getObject: jest.fn(() => ({ promise: () => Promise.reject(new Error('test error')) })),
-        };
-
+        const sqs = sqsMocker(messages);
         const client = new ExtendedSqsClient(sqs, s3, { bucketName: 'test-bucket' });
 
         // When
@@ -955,21 +984,23 @@ describe('ExtendedSqsClient receiveMessage', () => {
 });
 
 describe('ExtendedSqsClient deleteMessage', () => {
-    it('should delete a message not using S3', async () => {
+    it.concurrent.each([
+        [
+            {  deleteMessage: jest.fn(() => ({ promise: () => Promise.resolve('success') })) },
+        ],
+        [
+            {  deleteMessage: jest.fn(() => Promise.resolve('success')) },
+        ]
+    ])('should delete a message not using S3 - %#', async (sqs) => {
         // Given
-        const sqs = {
-            deleteMessage: jest.fn(() => ({ promise: () => Promise.resolve('success') })),
-        };
-
         const client = new ExtendedSqsClient(sqs, {}, { bucketName: 'test-bucket' });
 
         // When
-        await client
-            .deleteMessage({
-                QueueUrl: 'test-queue',
-                ReceiptHandle: 'receipthandle',
-            })
-            .promise();
+        const result = client.deleteMessage({
+            QueueUrl: 'test-queue',
+            ReceiptHandle: 'receipthandle',
+        })
+        'promise' in result ? await result.promise() : await result;
 
         // Then
         expect(sqs.deleteMessage).toHaveBeenCalledTimes(1);
@@ -979,24 +1010,25 @@ describe('ExtendedSqsClient deleteMessage', () => {
         });
     });
 
-    it('should delete a message and S3 message content', async () => {
+    it.concurrent.each([
+        [
+            {  deleteMessage: jest.fn(() => ({ promise: () => Promise.resolve('success') })) },
+            {  deleteObject: jest.fn(() => ({ promise: () => Promise.resolve('success') })) },
+        ],
+        [
+            {  deleteMessage: jest.fn(() => Promise.resolve('success')) },
+            {  deleteObject: jest.fn(() => Promise.resolve('success')) },
+        ]
+    ])('should delete a message and S3 message content - %#', async (sqs, s3) => {
         // Given
-        const sqs = {
-            deleteMessage: jest.fn(() => ({ promise: () => Promise.resolve('success') })),
-        };
-        const s3 = {
-            deleteObject: jest.fn(() => ({ promise: () => Promise.resolve('success') })),
-        };
-
         const client = new ExtendedSqsClient(sqs, s3, { bucketName: 'test-bucket' });
 
         // When
-        await client
-            .deleteMessage({
-                QueueUrl: 'test-queue',
-                ReceiptHandle: `-..s3BucketName..-test-bucket-..s3BucketName..--..s3Key..-${mockS3Key}-..s3Key..-receipthandle`,
-            })
-            .promise();
+        const result = client.deleteMessage({
+            QueueUrl: 'test-queue',
+            ReceiptHandle: `-..s3BucketName..-test-bucket-..s3BucketName..--..s3Key..-${mockS3Key}-..s3Key..-receipthandle`,
+        })
+        'promise' in result ? await result.promise() : await result;
 
         // Then
         expect(sqs.deleteMessage).toHaveBeenCalledTimes(1);
@@ -1014,37 +1046,38 @@ describe('ExtendedSqsClient deleteMessage', () => {
 });
 
 describe('ExtendedSqsClient deleteMessageBatch', () => {
-    it('should batch delete messages', async () => {
+    it.concurrent.each([
+        [
+            {  deleteMessageBatch: jest.fn(() => ({ promise: () => Promise.resolve('success') })) },
+            {  deleteObject: jest.fn(() => ({ promise: () => Promise.resolve('success') })) },
+        ],
+        [
+            {  deleteMessageBatch: jest.fn(() => Promise.resolve('success')) },
+            {  deleteObject: jest.fn(() => Promise.resolve('success')) },
+        ]
+    ])('should batch delete messages - %#', async (sqs, s3) => {
         // Given
-        const sqs = {
-            deleteMessageBatch: jest.fn(() => ({ promise: () => Promise.resolve('success') })),
-        };
-        const s3 = {
-            deleteObject: jest.fn(() => ({ promise: () => Promise.resolve('success') })),
-        };
-
         const client = new ExtendedSqsClient(sqs, s3, { bucketName: 'test-bucket' });
 
         // When
-        await client
-            .deleteMessageBatch({
-                QueueUrl: 'test-queue',
-                Entries: [
-                    {
-                        Id: '1',
-                        ReceiptHandle: `-..s3BucketName..-test-bucket-..s3BucketName..--..s3Key..-${mockS3Key}1-..s3Key..-receipthandle1`,
-                    },
-                    {
-                        Id: '2',
-                        ReceiptHandle: 'receipthandle2',
-                    },
-                    {
-                        Id: '1',
-                        ReceiptHandle: `-..s3BucketName..-test-bucket-..s3BucketName..--..s3Key..-${mockS3Key}2-..s3Key..-receipthandle3`,
-                    },
-                ],
-            })
-            .promise();
+        const result = client.deleteMessageBatch({
+            QueueUrl: 'test-queue',
+            Entries: [
+                {
+                    Id: '1',
+                    ReceiptHandle: `-..s3BucketName..-test-bucket-..s3BucketName..--..s3Key..-${mockS3Key}1-..s3Key..-receipthandle1`,
+                },
+                {
+                    Id: '2',
+                    ReceiptHandle: 'receipthandle2',
+                },
+                {
+                    Id: '1',
+                    ReceiptHandle: `-..s3BucketName..-test-bucket-..s3BucketName..--..s3Key..-${mockS3Key}2-..s3Key..-receipthandle3`,
+                },
+            ],
+        })
+        'promise' in result ? await result.promise() : await result;
 
         // Then
         expect(sqs.deleteMessageBatch).toHaveBeenCalledTimes(1);
@@ -1079,21 +1112,23 @@ describe('ExtendedSqsClient deleteMessageBatch', () => {
 });
 
 describe('ExtendedSqsClient changeMessageVisibility', () => {
-    it('should change visibility of a message not using S3', async () => {
+    it.concurrent.each([
+        [
+            {  changeMessageVisibility: jest.fn(() => ({ promise: () => Promise.resolve('success') })) },
+        ],
+        [
+            {  changeMessageVisibility: jest.fn(() => Promise.resolve('success')) },
+        ]
+    ])('should change visibility of a message not using S3 - %#', async (sqs) => {
         // Given
-        const sqs = {
-            changeMessageVisibility: jest.fn(() => ({ promise: () => Promise.resolve('success') })),
-        };
-
         const client = new ExtendedSqsClient(sqs, {}, { bucketName: 'test-bucket' });
 
         // When
-        await client
-            .changeMessageVisibility({
-                QueueUrl: 'test-queue',
-                ReceiptHandle: 'receipthandle',
-            })
-            .promise();
+        const result = client.changeMessageVisibility({
+            QueueUrl: 'test-queue',
+            ReceiptHandle: 'receipthandle',
+        })
+        'promise' in result ? await result.promise() : await result;
 
         // Then
         expect(sqs.changeMessageVisibility).toHaveBeenCalledTimes(1);
@@ -1103,21 +1138,23 @@ describe('ExtendedSqsClient changeMessageVisibility', () => {
         });
     });
 
-    it('should change visibility of a message using S3', async () => {
+    it.concurrent.each([
+        [
+            {  changeMessageVisibility: jest.fn(() => ({ promise: () => Promise.resolve('success') })) },
+        ],
+        [
+            {  changeMessageVisibility: jest.fn(() => Promise.resolve('success')) },
+        ]
+    ])('should change visibility of a message using S3', async (sqs) => {
         // Given
-        const sqs = {
-            changeMessageVisibility: jest.fn(() => ({ promise: () => Promise.resolve('success') })),
-        };
-
         const client = new ExtendedSqsClient(sqs, {}, { bucketName: 'test-bucket' });
 
         // When
-        await client
-            .changeMessageVisibility({
-                QueueUrl: 'test-queue',
-                ReceiptHandle: `-..s3BucketName..-test-bucket-..s3BucketName..--..s3Key..-${mockS3Key}-..s3Key..-receipthandle`,
-            })
-            .promise();
+        const result = client.changeMessageVisibility({
+            QueueUrl: 'test-queue',
+            ReceiptHandle: `-..s3BucketName..-test-bucket-..s3BucketName..--..s3Key..-${mockS3Key}-..s3Key..-receipthandle`,
+        })
+        'promise' in result ? await result.promise() : await result;
 
         // Then
         expect(sqs.changeMessageVisibility).toHaveBeenCalledTimes(1);
@@ -1129,30 +1166,32 @@ describe('ExtendedSqsClient changeMessageVisibility', () => {
 });
 
 describe('ExtendedSqsClient changeMessageVisibilityBatch', () => {
-    it('should batch change visibility', async () => {
+    it.concurrent.each([
+        [
+            {  changeMessageVisibilityBatch: jest.fn(() => ({ promise: () => Promise.resolve('success') })) },
+        ],
+        [
+            {  changeMessageVisibilityBatch: jest.fn(() => Promise.resolve('success')) },
+        ]
+    ])('should batch change visibility - %#', async (sqs) => {
         // Given
-        const sqs = {
-            changeMessageVisibilityBatch: jest.fn(() => ({ promise: () => Promise.resolve('success') })),
-        };
-
         const client = new ExtendedSqsClient(sqs, {}, { bucketName: 'test-bucket' });
 
         // When
-        await client
-            .changeMessageVisibilityBatch({
-                QueueUrl: 'test-queue',
-                Entries: [
-                    {
-                        Id: '1',
-                        ReceiptHandle: `-..s3BucketName..-test-bucket-..s3BucketName..--..s3Key..-${mockS3Key}-..s3Key..-receipthandle1`,
-                    },
-                    {
-                        Id: '2',
-                        ReceiptHandle: `-..s3BucketName..-test-bucket-..s3BucketName..--..s3Key..-${mockS3Key}-..s3Key..-receipthandle2`,
-                    },
-                ],
-            })
-            .promise();
+        const result = client.changeMessageVisibilityBatch({
+            QueueUrl: 'test-queue',
+            Entries: [
+                {
+                    Id: '1',
+                    ReceiptHandle: `-..s3BucketName..-test-bucket-..s3BucketName..--..s3Key..-${mockS3Key}-..s3Key..-receipthandle1`,
+                },
+                {
+                    Id: '2',
+                    ReceiptHandle: `-..s3BucketName..-test-bucket-..s3BucketName..--..s3Key..-${mockS3Key}-..s3Key..-receipthandle2`,
+                },
+            ],
+        })
+        'promise' in result ? await result.promise() : await result;
 
         // Then
         expect(sqs.changeMessageVisibilityBatch).toHaveBeenCalledTimes(1);
@@ -1206,7 +1245,16 @@ describe('ExtendedSqsClient middleware', () => {
         ]);
     });
 
-    it('should handle a message using S3', async () => {
+    it.concurrent.each([
+        [
+            (content) => ({  getObject: jest.fn(() => ({ promise: () => Promise.resolve(content) })) }),
+            { Body: Buffer.from('message body') }
+        ],
+        [
+            (content) => ({  getObject: jest.fn(() => Promise.resolve(content)) }),
+            { Body: { transformToString: jest.fn(async () => 'message body') }}
+        ]
+    ])('should handle a message using S3 - %#', async (s3Mocker, s3Content) => {
         // Given
         const handler = {
             event: {
@@ -1222,14 +1270,7 @@ describe('ExtendedSqsClient middleware', () => {
                 ],
             },
         };
-
-        const s3Content = {
-            Body: Buffer.from('message body'),
-        };
-        const s3 = {
-            getObject: jest.fn(() => ({ promise: () => Promise.resolve(s3Content) })),
-        };
-
+        const s3 = s3Mocker(s3Content);
         const middleware = new ExtendedSqsClient({}, s3, { bucketName: 'test-bucket' }).middleware();
 
         // When
@@ -1254,7 +1295,16 @@ describe('ExtendedSqsClient middleware', () => {
         ]);
     });
 
-    it('should apply custom receiveTransform function', async () => {
+    it.concurrent.each([
+        [
+            (content) => ({  getObject: jest.fn(() => ({ promise: () => Promise.resolve(content) })) }),
+            { Body: Buffer.from('custom s3 content') }
+        ],
+        [
+            (content) => ({  getObject: jest.fn(() => Promise.resolve(content)) }),
+            { Body: { transformToString: jest.fn(async () => 'custom s3 content') }}
+        ]
+    ])('should apply custom receiveTransform function', async (s3Mocker, s3Response) => {
         // Given
         const handler = {
             event: {
@@ -1270,13 +1320,7 @@ describe('ExtendedSqsClient middleware', () => {
                 ],
             },
         };
-
-        const s3Response = {
-            Body: Buffer.from('custom s3 content'),
-        };
-        const s3 = {
-            getObject: jest.fn(() => ({ promise: () => Promise.resolve(s3Response) })),
-        };
+        const s3 = s3Mocker(s3Response);
 
         const middleware = new ExtendedSqsClient({}, s3, {
             bucketName: 'test-bucket',

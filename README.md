@@ -12,7 +12,9 @@ npm install sqs-extended-client
 
 ## Usage
 
-The SQS Extended Client wraps supplied SQS and S3 instances from the AWS SDK. In order to send messages a `bucketName` is required, which is the S3 bucket where the message payloads will be stored:
+The SQS Extended Client wraps supplied SQS and S3 instances from the AWS SDK V2 and V3. In order to send messages a `bucketName` is required, which is the S3 bucket where the message payloads will be stored:
+
+Using aws-sdk V2:
 
 ```Javascript
 const AWS = require('aws-sdk');
@@ -29,7 +31,25 @@ const sqsExtendedClient = new SqsExtendedClient(sqs, s3,
 );
 ```
 
-The SQS Extended Client is used exactly as an SQS instance from the AWS SDK. It supports all the message level functions, and both promise() and callbacks:
+Using aws-sdk V3:
+
+```Javascript
+const { SQS } = require('@aws-sdk/client-sqs');
+const { S3 } = require('@aws-sdk/client-s3');
+const SqsExtendedClient = require('sqs-extended-client');
+
+const sqs = new SQS({ /* your SQS configuration */ });
+const s3 = new S3({ /* your S3 configuration */ });
+
+const sqsExtendedClient = new SqsExtendedClient(sqs, s3,
+    {
+        bucketName: '/* your bucket name */' // required for send message
+        // other configuration options
+    }
+);
+```
+
+The SQS Extended Client is used exactly as an SQS instance from the AWS SDK. It supports all the message level functions, and both promise() (aws-sdk V2 only) and callbacks:
 ```Javascript
 changeMessageVisibility()
 changeMessageVisibilityBatch()
@@ -39,12 +59,17 @@ sendMessage()
 sendMessageBatch()
 receiveMessage()
 
-// e.g.
+// e.g. aws-sdk v2:
 const response = await sqsExtendedClient.receiveMessage({
     QueueUrl: queueUrl,
 }).promise();
+
+// e.g. aws-sdk v3:
+const response = await sqsExtendedClient.receiveMessage({
+    QueueUrl: queueUrl,
+})
 ```
-For bucket level functions (e.g. createBucket) use the SDK SQS instance directly.
+For bucket level functions (e.g. createBucket) use the SDK S3 instance directly.
 
 Note that for `sendMessageBatch()` only the size of each message is considered, not the overall batch size. For this reason it is recommended to either use `alwaysUseS3: true` or reduce the message size threshold proportionally to the maximum batch size (e.g. `messageSizeThreshold: 26214`) when sending batches.
 

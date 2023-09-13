@@ -92,15 +92,27 @@ function addS3MessageKeyAttribute(s3MessageKey, attributes) {
 }
 
 function wrapRequest(request, callback, sendFn) {
+    // Callbacks work with both v2 and v3
     if (callback) {
         sendFn(callback);
+        return
     }
 
-    return {
-        ...request,
-        send: sendFn,
-        promise: sendFn,
-    };
+    // aws-sdk v2
+    if ('promise' in request) {
+      return {
+          ...request,
+          send: sendFn,
+          promise: sendFn,
+      };
+    }
+
+    // aws-sdk v3
+    return sendFn()
+}
+
+function awsV2CompatiblePromise(request) {
+  return 'promise' in request ? request.promise() : request;
 }
 
 function invokeFnBeforeRequest(request, fn) {
@@ -108,8 +120,7 @@ function invokeFnBeforeRequest(request, fn) {
         new Promise((resolve, reject) => {
             fn()
                 .then(() => {
-                    request
-                        .promise()
+                    awsV2CompatiblePromise(request)
                         .then((response) => {
                             if (callback) {
                                 callback(undefined, response);
@@ -142,8 +153,7 @@ function invokeFnBeforeRequest(request, fn) {
 function invokeFnAfterRequest(request, fn) {
     return (callback) =>
         new Promise((resolve, reject) => {
-            request
-                .promise()
+            awsV2CompatiblePromise(request)
                 .then((response) => {
                     fn(response)
                         .then(() => {
@@ -193,7 +203,7 @@ class ExtendedSqsClient {
             Body: s3Content,
         };
 
-        return this.s3.putObject(params).promise();
+        return awsV2CompatiblePromise(this.s3.putObject(params));
     }
 
     async _getS3Content(bucketName, key) {
@@ -202,8 +212,10 @@ class ExtendedSqsClient {
             Key: key,
         };
 
-        const object = await this.s3.getObject(params).promise();
-        return object.Body.toString();
+        const object = await awsV2CompatiblePromise(this.s3.getObject(params));
+        return 'transformToString' in object.Body
+            ? await object.Body.transformToString() // aws-sdk v3
+            : object.Body.toString();
     }
 
     _deleteS3Content(bucketName, key) {
@@ -212,7 +224,7 @@ class ExtendedSqsClient {
             Key: key,
         };
 
-        return this.s3.deleteObject(params).promise();
+        return awsV2CompatiblePromise(this.s3.deleteObject(params));
     }
 
     middleware() {
