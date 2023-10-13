@@ -1,6 +1,9 @@
 # SQS Extended Client
 
-A library for managing large AWS SQS message payloads using S3. In particular it supports message payloads that exceed the 256KB SQS limit. It is largely a Javascript version of the [Amazon SQS Extended Client Library for Java](https://github.com/awslabs/amazon-sqs-java-extended-client-lib), although not an exact copy.
+A library for managing large AWS SQS message payloads using S3. In particular it supports 
+message payloads that exceed the 256KB SQS limit. It is largely a Javascript version 
+of the [Amazon SQS Extended Client Library for Java](https://github.com/awslabs/amazon-sqs-java-extended-client-lib), 
+although not an exact copy.
 
 ## Install
 
@@ -12,44 +15,26 @@ npm install sqs-extended-client
 
 ## Usage
 
-The SQS Extended Client wraps supplied SQS and S3 instances from the AWS SDK V2 and V3. In order to send messages a `bucketName` is required, which is the S3 bucket where the message payloads will be stored:
-
-Using aws-sdk V2:
+The SQS Extended Client uses SQS and S3 instances from the AWS SDK v3. 
+In order to send messages a `bucketName` is required, which is the S3 bucket where the message payloads will be stored:
 
 ```Javascript
-const AWS = require('aws-sdk');
 const SqsExtendedClient = require('sqs-extended-client');
 
-const sqs = new AWS.SQS({ /* your SQS configuration */ });
-const s3 = new AWS.S3({ /* your S3 configuration */ });
-
-const sqsExtendedClient = new SqsExtendedClient(sqs, s3,
+const sqsExtendedClient = new SqsExtendedClient(
     {
-        bucketName: '/* your bucket name */' // required for send message
+        // required for send message
+        bucketName: '/* your bucket name */',
         // other configuration options
+        sqsClientConfig: {}, 
+        s3ClientConfig: {}
     }
 );
 ```
 
-Using aws-sdk V3:
+The SQS Extended Client is used exactly as an SQS instance from the AWS SDK. 
+It supports all the message level functions:
 
-```Javascript
-const { SQS } = require('@aws-sdk/client-sqs');
-const { S3 } = require('@aws-sdk/client-s3');
-const SqsExtendedClient = require('sqs-extended-client');
-
-const sqs = new SQS({ /* your SQS configuration */ });
-const s3 = new S3({ /* your S3 configuration */ });
-
-const sqsExtendedClient = new SqsExtendedClient(sqs, s3,
-    {
-        bucketName: '/* your bucket name */' // required for send message
-        // other configuration options
-    }
-);
-```
-
-The SQS Extended Client is used exactly as an SQS instance from the AWS SDK. It supports all the message level functions, and both promise() (aws-sdk V2 only) and callbacks:
 ```Javascript
 changeMessageVisibility()
 changeMessageVisibilityBatch()
@@ -59,25 +44,24 @@ sendMessage()
 sendMessageBatch()
 receiveMessage()
 
-// e.g. aws-sdk v2:
+// e.g.
 const response = await sqsExtendedClient.receiveMessage({
     QueueUrl: queueUrl,
-}).promise();
-
-// e.g. aws-sdk v3:
-const response = await sqsExtendedClient.receiveMessage({
-    QueueUrl: queueUrl,
-})
+});
 ```
 For bucket level functions (e.g. createBucket) use the SDK S3 instance directly.
 
-Note that for `sendMessageBatch()` only the size of each message is considered, not the overall batch size. For this reason it is recommended to either use `alwaysUseS3: true` or reduce the message size threshold proportionally to the maximum batch size (e.g. `messageSizeThreshold: 26214`) when sending batches.
+Note that for `sendMessageBatch()` only the size of each message is considered, not the overall batch size. 
+For this reason it is recommended to either use `alwaysUseS3: true` or reduce the message size threshold 
+proportionally to the maximum batch size (e.g. `messageSizeThreshold: 26214`) when sending batches.
 
 ## Options
 
 The SQS Extended Client supports the following options:
 
 * `bucketName` - S3 bucket where message payloads are stored (required for sending messages)
+* `sqsClientConfig` - optional SQS client options
+* `s3ClientConfig` - optional S3 client options
 * `alwaysUseS3` - flag indicating that messages payloads should always be stored in S3 regardless of size (default: `false`)
 * `messageSizeThreshold` - maximum size in bytes for message payloads before they are stored in S3 (default: `262144`)
 * `sendTransform` - see _Transforms_ section
@@ -110,7 +94,7 @@ const receiveTransform = (sqsMessage, s3Content) => ({
     largeItem: s3Content,
 });
 
-const sqsExtendedClient = new SqsExtendedClient(sqs, s3,
+const sqsExtendedClient = new SqsExtendedClient(
     {
         bucketName: '/* your bucket name */',
         sendTransform,
@@ -121,14 +105,15 @@ const sqsExtendedClient = new SqsExtendedClient(sqs, s3,
 
 ## Middleware
 
-If using [Middy](https://github.com/middyjs/middy) middleware with AWS Lambda then the SQS Extended Client provides a middleware implementation:
+If using [Middy](https://github.com/middyjs/middy) middleware with AWS Lambda then the SQS Extended Client provides 
+a middleware implementation:
 
 ```Javascript
 const middy = require('@middy/core');
 const SqsExtendedClient = require('sqs-extended-client');
 
 const handler = middy(/* Lambda event handler */)
-    .use(new SqsExtendedClient(sqs, s3).middleware());
+    .use(new SqsExtendedClient().middleware());
 ```
 
 ## Test
@@ -140,10 +125,11 @@ npm install
 npm run test
 ```
 
-The system tests require AWS Localstack to be installed and started. The system tests can then be run using:
+The integration tests require AWS Localstack to be installed and started. 
+The system tests can then be run using:
 
 ```
-npm run system-test
+npm run integration-test
 ```
 
 ## License

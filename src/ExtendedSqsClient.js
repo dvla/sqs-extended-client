@@ -1,10 +1,20 @@
 /* eslint-disable no-underscore-dangle */
 const { v4: uuidv4 } = require('uuid');
+const {
+    SQSClient,
+    ChangeMessageVisibilityCommand,
+    ChangeMessageVisibilityBatchCommand,
+    DeleteMessageCommand,
+    DeleteMessageBatchCommand,
+    SendMessageCommand,
+    SendMessageBatchCommand,
+    ReceiveMessageCommand,
+} = require('@aws-sdk/client-sqs');
+const { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand } = require('@aws-sdk/client-s3');
 const { isLarge } = require('./sqsMessageSizeUtils');
 
 const S3_MESSAGE_KEY_MARKER = '-..s3Key..-';
 const S3_BUCKET_NAME_MARKER = '-..s3BucketName..-';
-
 const S3_MESSAGE_BODY_KEY = 'S3MessageBodyKey';
 
 function defaultSendTransform(alwaysUseS3, messageSizeThreshold) {
@@ -19,9 +29,7 @@ function defaultSendTransform(alwaysUseS3, messageSizeThreshold) {
 }
 
 function defaultReceiveTransform() {
-    return (message, s3Content) => {
-        return s3Content || message.body || message.Body;
-    };
+    return (message, s3Content) => s3Content || message.body || message.Body;
 }
 
 function getS3MessageKeyAndBucket(message) {
@@ -41,7 +49,7 @@ function getS3MessageKeyAndBucket(message) {
         throw new Error(`Invalid ${S3_MESSAGE_BODY_KEY} message attribute: Missing stringValue/StringValue`);
     }
 
-    const s3MessageKeyRegexMatch = s3MessageKey.match(/^\((.*)\)(.*)?/);
+    const s3MessageKeyRegexMatch = s3MessageKey.match(/^\((.*)\)(.+)/);
 
     return {
         bucketName: s3MessageKeyRegexMatch[1],
@@ -91,104 +99,12 @@ function addS3MessageKeyAttribute(s3MessageKey, attributes) {
     };
 }
 
-function wrapRequest(request, callback, sendFn) {
-    // Callbacks work with both v2 and v3
-    if (callback) {
-        sendFn(callback);
-        return
-    }
-
-    // aws-sdk v2
-    if ('promise' in request) {
-      return {
-          ...request,
-          send: sendFn,
-          promise: sendFn,
-      };
-    }
-
-    // aws-sdk v3
-    return sendFn()
-}
-
-function awsV2CompatiblePromise(request) {
-  return 'promise' in request ? request.promise() : request;
-}
-
-function invokeFnBeforeRequest(request, fn) {
-    return (callback) =>
-        new Promise((resolve, reject) => {
-            fn()
-                .then(() => {
-                    awsV2CompatiblePromise(request)
-                        .then((response) => {
-                            if (callback) {
-                                callback(undefined, response);
-                            }
-
-                            resolve(response);
-                        })
-                        .catch((err) => {
-                            if (callback) {
-                                callback(err);
-                                resolve();
-                                return;
-                            }
-
-                            reject(err);
-                        });
-                })
-                .catch((fnErr) => {
-                    if (callback) {
-                        callback(fnErr);
-                        resolve();
-                        return;
-                    }
-
-                    reject(fnErr);
-                });
-        });
-}
-
-function invokeFnAfterRequest(request, fn) {
-    return (callback) =>
-        new Promise((resolve, reject) => {
-            awsV2CompatiblePromise(request)
-                .then((response) => {
-                    fn(response)
-                        .then(() => {
-                            if (callback) {
-                                callback(undefined, response);
-                            }
-
-                            resolve(response);
-                        })
-                        .catch((s3Err) => {
-                            if (callback) {
-                                callback(s3Err);
-                                resolve();
-                                return;
-                            }
-
-                            reject(s3Err);
-                        });
-                })
-                .catch((err) => {
-                    if (callback) {
-                        callback(err);
-                        resolve();
-                        return;
-                    }
-
-                    reject(err);
-                });
-        });
-}
-
 class ExtendedSqsClient {
-    constructor(sqs, s3, options = {}) {
-        this.sqs = sqs;
-        this.s3 = s3;
+    constructor(options = {}) {
+        this.sqsClientConfig = options.sqsClientConfig || {};
+        this.s3ClientConfig = options.s3ClientConfig || {};
+        this.sqsClient = new SQSClient(this.sqsClientConfig);
+        this.s3Client = new S3Client(this.s3ClientConfig);
         this.bucketName = options.bucketName;
 
         this.sendTransform =
@@ -197,34 +113,32 @@ class ExtendedSqsClient {
     }
 
     _storeS3Content(key, s3Content) {
-        const params = {
+        const putObjectCommandInput = {
             Bucket: this.bucketName,
             Key: key,
             Body: s3Content,
         };
-
-        return awsV2CompatiblePromise(this.s3.putObject(params));
+        const putObjectCommand = new PutObjectCommand(putObjectCommandInput);
+        return this.s3Client.send(putObjectCommand);
     }
 
     async _getS3Content(bucketName, key) {
-        const params = {
+        const getObjectCommandInput = {
             Bucket: bucketName,
             Key: key,
         };
-
-        const object = await awsV2CompatiblePromise(this.s3.getObject(params));
-        return 'transformToString' in object.Body
-            ? await object.Body.transformToString() // aws-sdk v3
-            : object.Body.toString();
+        const getObjectCommand = new GetObjectCommand(getObjectCommandInput);
+        const object = await this.s3Client.send(getObjectCommand);
+        return object.Body.transformToString();
     }
 
     _deleteS3Content(bucketName, key) {
-        const params = {
+        const deleteObjectCommandInput = {
             Bucket: bucketName,
             Key: key,
         };
-
-        return awsV2CompatiblePromise(this.s3.deleteObject(params));
+        const deleteObjectCommand = new DeleteObjectCommand(deleteObjectCommandInput);
+        return this.s3Client.send(deleteObjectCommand);
     }
 
     middleware() {
@@ -251,32 +165,34 @@ class ExtendedSqsClient {
                             record.body = this.receiveTransform(record);
                         }
                     })
-                )
+                );
             },
         };
     }
 
-    changeMessageVisibility(params, callback) {
-        return this.sqs.changeMessageVisibility(
-            {
-                ...params,
-                ReceiptHandle: getOriginReceiptHandle(params.ReceiptHandle),
-            },
-            callback
-        );
+    changeMessageVisibility(params) {
+        const changeMessageVisibilityCommandInput = {
+            ...params,
+            ReceiptHandle: getOriginReceiptHandle(params.ReceiptHandle),
+        };
+        const changeMessageVisibilityCommand = new ChangeMessageVisibilityCommand(changeMessageVisibilityCommandInput);
+
+        return this.sqsClient.send(changeMessageVisibilityCommand);
     }
 
-    changeMessageVisibilityBatch(params, callback) {
-        return this.sqs.changeMessageVisibilityBatch(
-            {
-                ...params,
-                Entries: params.Entries.map((entry) => ({
-                    ...entry,
-                    ReceiptHandle: getOriginReceiptHandle(entry.ReceiptHandle),
-                })),
-            },
-            callback
+    changeMessageVisibilityBatch(params) {
+        const changeMessageVisibilityBatchCommandInput = {
+            ...params,
+            Entries: params.Entries.map((entry) => ({
+                ...entry,
+                ReceiptHandle: getOriginReceiptHandle(entry.ReceiptHandle),
+            })),
+        };
+        const changeMessageVisibilityBatchCommand = new ChangeMessageVisibilityBatchCommand(
+            changeMessageVisibilityBatchCommandInput
         );
+
+        return this.sqsClient.send(changeMessageVisibilityBatchCommand);
     }
 
     /* eslint-disable-next-line class-methods-use-this */
@@ -291,52 +207,45 @@ class ExtendedSqsClient {
         };
     }
 
-    deleteMessage(params, callback) {
+    async deleteMessage(params) {
         const { bucketName, s3MessageKey, deleteParams } = this._prepareDelete(params);
 
+        const deleteMessageCommand = new DeleteMessageCommand(deleteParams);
+
         if (!s3MessageKey) {
-            return this.sqs.deleteMessage(deleteParams, callback);
+            return this.sqsClient.send(deleteMessageCommand);
         }
 
-        const request = this.sqs.deleteMessage(deleteParams);
+        await this._deleteS3Content(bucketName, s3MessageKey);
 
-        return wrapRequest(
-            request,
-            callback,
-            invokeFnBeforeRequest(request, () => this._deleteS3Content(bucketName, s3MessageKey))
-        );
+        return this.sqsClient.send(deleteMessageCommand);
     }
 
-    deleteMessageBatch(params, callback) {
+    async deleteMessageBatch(params) {
         const entryObjs = params.Entries.map((entry) => this._prepareDelete(entry));
 
         const deleteParams = { ...params };
         deleteParams.Entries = entryObjs.map((entryObj) => entryObj.deleteParams);
 
-        const request = this.sqs.deleteMessageBatch(deleteParams);
+        const deleteMessageBatchCommand = new DeleteMessageBatchCommand(deleteParams);
 
-        return wrapRequest(
-            request,
-            callback,
-            invokeFnBeforeRequest(request, () =>
-                Promise.all(
-                    entryObjs.map(({ bucketName, s3MessageKey }) => {
-                        if (s3MessageKey) {
-                            return this._deleteS3Content(bucketName, s3MessageKey);
-                        }
-                        return Promise.resolve();
-                    })
-                )
-            )
+        await Promise.all(
+            entryObjs.map(({ bucketName, s3MessageKey }) => {
+                if (s3MessageKey) {
+                    return this._deleteS3Content(bucketName, s3MessageKey);
+                }
+                return Promise.resolve();
+            })
         );
+
+        return this.sqsClient.send(deleteMessageBatchCommand);
     }
 
     _prepareSend(params) {
         const sendParams = { ...params };
 
         const sendObj = this.sendTransform(sendParams);
-        const existingS3MessageKey =
-            params.MessageAttributes && params.MessageAttributes[ExtendedSqsClient.RESERVED_ATTRIBUTE_NAME];
+        const existingS3MessageKey = params.MessageAttributes?.[ExtendedSqsClient.RESERVED_ATTRIBUTE_NAME];
         let s3MessageKey;
 
         if (!sendObj.s3Content || existingS3MessageKey) {
@@ -357,27 +266,25 @@ class ExtendedSqsClient {
         };
     }
 
-    sendMessage(params, callback) {
+    async sendMessage(params) {
         if (!this.bucketName) {
             throw new Error('bucketName option is required for sending messages');
         }
 
         const { s3MessageKey, sendParams, s3Content } = this._prepareSend(params);
 
+        const sendMessageCommand = new SendMessageCommand(sendParams);
+
         if (!s3MessageKey) {
-            return this.sqs.sendMessage(sendParams, callback);
+            return this.sqsClient.send(sendMessageCommand);
         }
 
-        const request = this.sqs.sendMessage(sendParams);
+        await this._storeS3Content(s3MessageKey, s3Content);
 
-        return wrapRequest(
-            request,
-            callback,
-            invokeFnBeforeRequest(request, () => this._storeS3Content(s3MessageKey, s3Content))
-        );
+        return this.sqsClient.send(sendMessageCommand);
     }
 
-    sendMessageBatch(params, callback) {
+    async sendMessageBatch(params) {
         if (!this.bucketName) {
             throw new Error('bucketName option is required for sending messages');
         }
@@ -387,59 +294,50 @@ class ExtendedSqsClient {
         const sendParams = { ...params };
         sendParams.Entries = entryObjs.map((entryObj) => entryObj.sendParams);
 
-        const request = this.sqs.sendMessageBatch(sendParams);
+        const sendMessageBatchCommand = new SendMessageBatchCommand(sendParams);
 
-        return wrapRequest(
-            request,
-            callback,
-            invokeFnBeforeRequest(request, () =>
-                Promise.all(
-                    entryObjs.map(({ s3Content, s3MessageKey }) => {
-                        if (s3MessageKey) {
-                            return this._storeS3Content(s3MessageKey, s3Content);
-                        }
+        await Promise.all(
+            entryObjs.map(({ s3Content, s3MessageKey }) => {
+                if (s3MessageKey) {
+                    return this._storeS3Content(s3MessageKey, s3Content);
+                }
+                return Promise.resolve();
+            })
+        );
 
-                        return Promise.resolve();
-                    })
-                )
-            )
+        return this.sqsClient.send(sendMessageBatchCommand);
+    }
+
+    _processReceive(response) {
+        return Promise.all(
+            (response.Messages || []).map(async (message) => {
+                const { bucketName, s3MessageKey } = getS3MessageKeyAndBucket(message);
+                if (s3MessageKey) {
+                    /* eslint-disable-next-line no-param-reassign */
+                    message.Body = this.receiveTransform(message, await this._getS3Content(bucketName, s3MessageKey));
+                    /* eslint-disable-next-line no-param-reassign */
+                    message.ReceiptHandle = embedS3MarkersInReceiptHandle(
+                        bucketName,
+                        s3MessageKey,
+                        message.ReceiptHandle
+                    );
+                } else {
+                    /* eslint-disable-next-line no-param-reassign */
+                    message.Body = this.receiveTransform(message);
+                }
+            })
         );
     }
 
-    _processReceive() {
-        return (response) =>
-            Promise.all(
-                (response.Messages || []).map(async (message) => {
-                    const { bucketName, s3MessageKey } = getS3MessageKeyAndBucket(message);
-
-                    if (s3MessageKey) {
-                        /* eslint-disable-next-line no-param-reassign */
-                        message.Body = this.receiveTransform(
-                            message,
-                            await this._getS3Content(bucketName, s3MessageKey)
-                        );
-                        /* eslint-disable-next-line no-param-reassign */
-                        message.ReceiptHandle = embedS3MarkersInReceiptHandle(
-                            bucketName,
-                            s3MessageKey,
-                            message.ReceiptHandle
-                        );
-                    } else {
-                        /* eslint-disable-next-line no-param-reassign */
-                        message.Body = this.receiveTransform(message);
-                    }
-                })
-            );
-    }
-
-    receiveMessage(params, callback) {
+    async receiveMessage(params) {
         const modifiedParams = {
             ...params,
             MessageAttributeNames: [...(params.MessageAttributeNames || []), ExtendedSqsClient.RESERVED_ATTRIBUTE_NAME],
         };
-
-        const request = this.sqs.receiveMessage(modifiedParams);
-        return wrapRequest(request, callback, invokeFnAfterRequest(request, this._processReceive()));
+        const receiveMessageCommand = new ReceiveMessageCommand(modifiedParams);
+        const response = await this.sqsClient.send(receiveMessageCommand);
+        await this._processReceive(response);
+        return response;
     }
 }
 
