@@ -11,7 +11,7 @@ const {
     ChangeMessageVisibilityBatchCommand,
 } = require('@aws-sdk/client-sqs');
 const { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand } = require('@aws-sdk/client-s3');
-const { sdkStreamMixin } = require('@aws-sdk/util-stream');
+const { sdkStreamMixin } = require('@smithy/util-stream');
 const { Readable } = require('stream');
 const ExtendedSqsClient = require('../ExtendedSqsClient');
 
