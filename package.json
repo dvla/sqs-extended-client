@@ -15,16 +15,16 @@
         "integration-test": "jest --testPathPattern='integration-test/.*'"
     },
     "dependencies": {
-        "uuid": "^9.0.0"
+        "uuid": "^9.0.1"
     },
     "devDependencies": {
-        "@aws-sdk/client-s3": "^3.405.0",
-        "@aws-sdk/client-sqs": "^3.405.0",
+        "@aws-sdk/client-s3": "^3.428.0",
+        "@aws-sdk/client-sqs": "^3.428.0",
+        "@aws-sdk/util-stream": "^3.374.0",
         "aws-sdk-client-mock": "^3.0.0",
         "aws-sdk-client-mock-jest": "^3.0.0",
-        "@aws-sdk/util-stream": "^3.374.0",
-        "jest": "^29.5.0",
-        "jest-cli": "^29.5.0"
+        "jest": "^29.7.0",
+        "jest-cli": "^29.7.0"
     },
     "jest": {
         "testEnvironment": "node"
