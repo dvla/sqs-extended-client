@@ -5,6 +5,10 @@ message payloads that exceed the 256KB SQS limit. It is largely a Javascript ver
 of the [Amazon SQS Extended Client Library for Java](https://github.com/awslabs/amazon-sqs-java-extended-client-lib), 
 although not an exact copy.
 
+This module is intended to be used within node18.x lambda runtime environment, as AWS will remove support for node 16.x in the distant future.
+
+If this module will be used in a node16.x lambda runtime, @aws-sdk dependency have to be bundled into the app.
+
 ## Install
 
 To install the SQS Extended Client run:

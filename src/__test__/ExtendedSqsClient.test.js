@@ -452,14 +452,12 @@ describe('ExtendedSqsClient receiveMessage', () => {
 
         // Then
         expect(mockSQS).toHaveReceivedCommandTimes(ReceiveMessageCommand, 1);
-        // expect(sqs.receiveMessage).toHaveBeenCalledTimes(1);
         expect(mockSQS).toHaveReceivedCommandWith(ReceiveMessageCommand, {
             MessageAttributeNames: ['MessageAttribute', 'S3MessageBodyKey'],
             QueueUrl: 'test-queue',
         });
 
         expect(mockS3).toHaveReceivedCommandTimes(GetObjectCommand, 1);
-        // expect(s3.getObject).toHaveBeenCalledTimes(1);
         expect(mockS3).toHaveReceivedCommandWith(GetObjectCommand, {
             Bucket: 'test-bucket',
             Key: mockS3Key,
