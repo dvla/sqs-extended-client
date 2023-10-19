@@ -764,9 +764,6 @@ describe('ExtendedSqsClient changeMessageVisibility', () => {
     it('should change visibility of a message using S3', async () => {
         // Given
         mockSQS.on(ChangeMessageVisibilityCommand).resolves({});
-        // const sqs = {
-        //     changeMessageVisibility: jest.fn(() => ({ promise: () => Promise.resolve('success') })),
-        // };
 
         const client = new ExtendedSqsClient({ bucketName: 'test-bucket' });
 
