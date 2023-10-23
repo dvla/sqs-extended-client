@@ -143,9 +143,9 @@ npm run integration-test
 
 ## Examples
 
-[sender.js](examples/sender.js) - AWS Lambda function which send message.
+[sender.js](example/sender.js) - AWS Lambda function which send message.
 
-[receiver.js](examples/receiver.js) - AWS Lambda function which receives messages from sqs.
+[receiver.js](example/receiver.js) - AWS Lambda function which receives messages from sqs.
 
 ## License
 
