@@ -308,25 +308,25 @@ class ExtendedSqsClient {
         return this.sqsClient.send(sendMessageBatchCommand);
     }
 
-    _processReceive(response) {
-        return Promise.all(
-            (response.Messages || []).map(async (message) => {
+    async _processReceive(response) {
+        const messages = await Promise.all(
+            (response.Messages || []).map(async (input) => {
+                const message = { ...input };
                 const { bucketName, s3MessageKey } = getS3MessageKeyAndBucket(message);
                 if (s3MessageKey) {
-                    /* eslint-disable-next-line no-param-reassign */
                     message.Body = this.receiveTransform(message, await this._getS3Content(bucketName, s3MessageKey));
-                    /* eslint-disable-next-line no-param-reassign */
                     message.ReceiptHandle = embedS3MarkersInReceiptHandle(
                         bucketName,
                         s3MessageKey,
                         message.ReceiptHandle
                     );
                 } else {
-                    /* eslint-disable-next-line no-param-reassign */
                     message.Body = this.receiveTransform(message);
                 }
+                return message;
             })
         );
+        return { ...response, Messages: messages.length > 0 ? messages : undefined };
     }
 
     async receiveMessage(params) {
@@ -336,8 +336,7 @@ class ExtendedSqsClient {
         };
         const receiveMessageCommand = new ReceiveMessageCommand(modifiedParams);
         const response = await this.sqsClient.send(receiveMessageCommand);
-        await this._processReceive(response);
-        return response;
+        return this._processReceive(response);
     }
 }
 
