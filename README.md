@@ -141,6 +141,12 @@ The system tests can then be run using:
 npm run integration-test
 ```
 
+## Examples
+
+[sender.js](examples/sender.js) - AWS Lambda function which send message.
+
+[receiver.js](examples/receiver.js) - AWS Lambda function which receives messages from sqs.
+
 ## License
 
 The MIT License (MIT)
