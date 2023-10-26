@@ -142,7 +142,7 @@ The integration tests require AWS Localstack to be installed and started.
 The system tests can then be run using:
 
 ```
-npm run integration-test
+npm run system-test
 ```
 
 ## Examples
