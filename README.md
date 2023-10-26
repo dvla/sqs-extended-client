@@ -138,8 +138,7 @@ npm install
 npm run test
 ```
 
-The integration tests require AWS Localstack to be installed and started. 
-The system tests can then be run using:
+The system tests require AWS Localstack to be installed and started. The system tests can then be run using:
 
 ```
 npm run system-test
