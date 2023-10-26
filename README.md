@@ -9,9 +9,12 @@ This module is intended to be used within node18.x lambda runtime environment, a
 
 If this module will be used in a node16.x lambda runtime, @aws-sdk dependency have to be bundled into the consumer app.
 
+## version 1.0.0
+
 **Breaking change!**
 
-`SqsExtendedClient()` do not requires passing aws sqs and s3 clients as a parameters anymore.
+- Module uses now only aws-sdk v3
+- `SqsExtendedClient()` do not require passing aws sdk sqs and s3 clients as a parameters anymore, as it uses aws-sdk v3 internally. 
 
 
 ## Install
