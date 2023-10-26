@@ -7,7 +7,8 @@ although not an exact copy.
 
 This module is intended to be used within node18.x lambda runtime environment, as AWS will remove support for node 16.x in the distant future.
 
-If this module will be used in a node16.x lambda runtime, @aws-sdk dependency have to be bundled into the consumer app.
+If this module will be used in a node16.x lambda runtime,
+`@aws-sdk/client-s3` and `@aws-sdk/client-sqs` dependencies will have to be bundled into the consumer app.
 
 ## version 1.0.0
 

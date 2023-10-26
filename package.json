@@ -12,14 +12,16 @@
     },
     "scripts": {
         "test": "jest --testPathPattern='src/.*'",
-        "integration-test": "jest --testPathPattern='integration-test/.*'"
+        "system-test": "jest --testPathPattern='system-test/.*'"
     },
     "dependencies": {
         "uuid": "^9.0.1"
     },
-    "devDependencies": {
+    "peerDependencies": {
         "@aws-sdk/client-s3": "^3.428.0",
-        "@aws-sdk/client-sqs": "^3.428.0",
+        "@aws-sdk/client-sqs": "^3.428.0"
+    },
+    "devDependencies": {
         "@smithy/util-stream": "^2.0.16",
         "aws-sdk-client-mock": "^3.0.0",
         "aws-sdk-client-mock-jest": "^3.0.0",
