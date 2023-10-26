@@ -1,37 +1,29 @@
-const AWS = require('aws-sdk');
-const { SQS } = require('@aws-sdk/client-sqs');
-const { S3 } = require('@aws-sdk/client-s3');
-const uuid = require('uuid/v4');
+const { SQSClient, CreateQueueCommand, DeleteQueueCommand } = require('@aws-sdk/client-sqs');
+const { S3Client, CreateBucketCommand, DeleteBucketCommand, ListObjectsV2Command } = require('@aws-sdk/client-s3');
+
+const { v4: uuid } = require('uuid');
 
 const ExtendedSqsClient = require('../src/ExtendedSqsClient');
 
+process.env.AWS_ACCESS_KEY_ID = 'test';
+process.env.AWS_SECRET_ACCESS_KEY = 'test';
+
 const sqsEndpoint = process.env.SQS_ENDPOINT || 'http://localhost:4566';
-const sqsV2 = new AWS.SQS({
-    apiVersion: '2012-11-05',
-    endpoint: sqsEndpoint,
+const sqsClientConfig = {
     region: 'eu-west-2',
-});
-const sqsV3 = new SQS({
-    apiVersion: '2012-11-05',
     endpoint: sqsEndpoint,
-    region: 'eu-west-2',
-});
+};
+const sqsClient = new SQSClient(sqsClientConfig);
 
 const s3Endpoint = process.env.S3_ENDPOINT || 'http://localhost:4566';
-const s3V2 = new AWS.S3({
-    apiVersion: '2006-03-01',
-    endpoint: s3Endpoint,
+const s3ClientConfig = {
     region: 'eu-west-2',
-    s3ForcePathStyle: true,
-});
-const s3V3 = new S3({
-    apiVersion: '2006-03-01',
     endpoint: s3Endpoint,
-    region: 'eu-west-2',
     forcePathStyle: true,
-});
+};
+const s3Client = new S3Client(s3ClientConfig);
 
-jest.setTimeout(60000);
+jest.setTimeout(30000);
 
 let queueUrl;
 const bucketName = uuid();
@@ -40,48 +32,41 @@ const largeMessageBody = 'large body'.repeat(1024 * 1024);
 const largeMessageBody2 = 'large body2'.repeat(1024 * 1024);
 
 beforeEach(async () => {
-    queueUrl = (await sqsV2.createQueue({ QueueName: uuid() }).promise()).QueueUrl;
-    await s3V2.createBucket({ Bucket: bucketName }).promise();
+    queueUrl = (await sqsClient.send(new CreateQueueCommand({ QueueName: uuid() }))).QueueUrl;
+    await s3Client.send(new CreateBucketCommand({ Bucket: bucketName }));
 });
 
 afterEach(async () => {
-    await sqsV2.deleteQueue({ QueueUrl: queueUrl }).promise();
-    await s3V2.deleteBucket({ Bucket: bucketName }).promise();
+    await sqsClient.send(new DeleteQueueCommand({ QueueUrl: queueUrl }));
+    await s3Client.send(new DeleteBucketCommand({ Bucket: bucketName }));
 });
 
 async function s3ObjectCount() {
-  return (await s3V2.listObjectsV2({ Bucket: bucketName }).promise()).KeyCount;
+    return (await s3Client.send(new ListObjectsV2Command({ Bucket: bucketName }))).KeyCount;
 }
 
-describe.each([
-  [sqsV2, s3V2],
-  [sqsV3, s3V3],
-])('sqs-extended-client - %#', (sqs, s3) => {
-
+describe('sqs-extended-client', () => {
     it('should send/receive/delete small message not using S3', async () => {
         // Given
-        const sqsExtendedClientSend = new ExtendedSqsClient(sqs, s3, { bucketName });
-        const sqsExtendedClient = new ExtendedSqsClient(sqs, s3);
+        const sqsExtendedClientSend = new ExtendedSqsClient({ sqsClientConfig, s3ClientConfig, bucketName });
+        const sqsExtendedClient = new ExtendedSqsClient({ sqsClientConfig, s3ClientConfig });
 
         // When
-        const sendMessageResult = sqsExtendedClientSend.sendMessage({
+        await sqsExtendedClientSend.sendMessage({
             QueueUrl: queueUrl,
             MessageBody: 'small body',
-        })
-        'promise' in sendMessageResult ? await sendMessageResult.promise() : await sendMessageResult;
+        });
 
-        const receiveMessageResult = sqsExtendedClient.receiveMessage({
+        const { Messages: messages } = await sqsExtendedClient.receiveMessage({
             QueueUrl: queueUrl,
-        })
-        const { Messages: messages } = 'promise' in receiveMessageResult ? await receiveMessageResult.promise() : await receiveMessageResult;
+        });
 
         const s3Objects = await s3ObjectCount();
 
-        const deleteMessageResult = sqsExtendedClient.deleteMessage({
+        await sqsExtendedClient.deleteMessage({
             QueueUrl: queueUrl,
             ReceiptHandle: messages[0].ReceiptHandle,
-        })
-        'promise' in deleteMessageResult ? await deleteMessageResult.promise() : await deleteMessageResult;
+        });
 
         // Then
         expect(messages[0].Body).toBe('small body');
@@ -92,28 +77,25 @@ describe.each([
 
     it('should send/receive/delete large message using S3', async () => {
         // Given
-        const sqsExtendedClientSend = new ExtendedSqsClient(sqs, s3, { bucketName });
-        const sqsExtendedClient = new ExtendedSqsClient(sqs, s3);
+        const sqsExtendedClientSend = new ExtendedSqsClient({ sqsClientConfig, s3ClientConfig, bucketName });
+        const sqsExtendedClient = new ExtendedSqsClient({ sqsClientConfig, s3ClientConfig });
 
         // When
-        const sendMessageResult = sqsExtendedClientSend.sendMessage({
+        await sqsExtendedClientSend.sendMessage({
             QueueUrl: queueUrl,
             MessageBody: largeMessageBody,
-        })
-        'promise' in sendMessageResult ? await sendMessageResult.promise() : await sendMessageResult;
+        });
 
-        const receiveMessageResult = sqsExtendedClient.receiveMessage({
+        const { Messages: messages } = await sqsExtendedClient.receiveMessage({
             QueueUrl: queueUrl,
-        })
-        const { Messages: messages } = 'promise' in receiveMessageResult ? await receiveMessageResult.promise() : await receiveMessageResult;
+        });
 
         const s3Objects = await s3ObjectCount();
 
-        const deleteMessageResult = sqsExtendedClient.deleteMessage({
+        await sqsExtendedClient.deleteMessage({
             QueueUrl: queueUrl,
             ReceiptHandle: messages[0].ReceiptHandle,
-        })
-        'promise' in deleteMessageResult ? await deleteMessageResult.promise() : await deleteMessageResult;
+        });
 
         // Then
         expect(messages[0].Body).toBe(largeMessageBody);
@@ -138,30 +120,32 @@ describe.each([
                 largeItem: s3Content,
             });
 
-        const sqsExtendedClientSend = new ExtendedSqsClient(sqs, s3, { bucketName, sendTransform });
-        const sqsExtendedClient = new ExtendedSqsClient(sqs, s3, { receiveTransform });
+        const sqsExtendedClientSend = new ExtendedSqsClient({
+            sqsClientConfig,
+            s3ClientConfig,
+            bucketName,
+            sendTransform,
+        });
+        const sqsExtendedClient = new ExtendedSqsClient({ sqsClientConfig, s3ClientConfig, receiveTransform });
 
         const bodyObj = { smallItem: 'small', largeItem: 'large'.repeat(1024 * 1024) };
 
         // When
-        const sendMessageResult = sqsExtendedClientSend.sendMessage({
+        await sqsExtendedClientSend.sendMessage({
             QueueUrl: queueUrl,
             MessageBody: JSON.stringify(bodyObj),
-        })
-        'promise' in sendMessageResult ? await sendMessageResult.promise() : await sendMessageResult;
+        });
 
-        const receiveMessageResult = sqsExtendedClient.receiveMessage({
+        const { Messages: messages } = await sqsExtendedClient.receiveMessage({
             QueueUrl: queueUrl,
-        })
-        const { Messages: messages } = 'promise' in receiveMessageResult ? await receiveMessageResult.promise() : await receiveMessageResult;
+        });
 
         const s3Objects = await s3ObjectCount();
 
-        const deleteMessageResult = sqsExtendedClient.deleteMessage({
+        await sqsExtendedClient.deleteMessage({
             QueueUrl: queueUrl,
             ReceiptHandle: messages[0].ReceiptHandle,
-        })
-        'promise' in deleteMessageResult ? await deleteMessageResult.promise() : await deleteMessageResult;
+        });
 
         // Then
         expect(JSON.parse(messages[0].Body)).toEqual(bodyObj);
@@ -172,11 +156,11 @@ describe.each([
 
     it('should send/receive/delete batch using S3', async () => {
         // Given
-        const sqsExtendedClientSend = new ExtendedSqsClient(sqs, s3, { bucketName });
-        const sqsExtendedClient = new ExtendedSqsClient(sqs, s3);
+        const sqsExtendedClientSend = new ExtendedSqsClient({ sqsClientConfig, s3ClientConfig, bucketName });
+        const sqsExtendedClient = new ExtendedSqsClient({ sqsClientConfig, s3ClientConfig });
 
         // When
-        const sendMessageResult = sqsExtendedClientSend.sendMessageBatch({
+        await sqsExtendedClientSend.sendMessageBatch({
             QueueUrl: queueUrl,
             Entries: [
                 {
@@ -192,27 +176,16 @@ describe.each([
                     MessageBody: largeMessageBody2,
                 },
             ],
-        })
-        'promise' in sendMessageResult ? await sendMessageResult.promise() : await sendMessageResult;
+        });
 
-        // SQS does not guarantee receiving up to `MaxNumberOfMessages` messages from a queue in a single request because of it's distributed computing architecture,
-        // so we need to request a few times to get all the messages, especially when there are a low number of messages in the queue
-        const messages = []
-        let attempts = 10
-        while (attempts > 0 && messages.length < 3) {
-            const receiveMessageResult = sqsExtendedClient.receiveMessage({ QueueUrl: queueUrl, MaxNumberOfMessages: 10 })
-            const { Messages } = 'promise' in receiveMessageResult ? await receiveMessageResult.promise() : await receiveMessageResult;
-            if (Messages) {
-                messages.push(...Messages)
-            }
-      
-            await new Promise((resolve) => setTimeout(resolve, 10))
-            attempts -= 1
-        }
+        const { Messages: messages } = await sqsExtendedClient.receiveMessage({
+            QueueUrl: queueUrl,
+            MaxNumberOfMessages: 10,
+        });
 
         const s3Objects = await s3ObjectCount();
 
-        const deleteMessageResult = sqsExtendedClient.deleteMessageBatch({
+        await sqsExtendedClient.deleteMessageBatch({
             QueueUrl: queueUrl,
             Entries: [
                 {
@@ -228,8 +201,7 @@ describe.each([
                     ReceiptHandle: messages[2].ReceiptHandle,
                 },
             ],
-        })
-        'promise' in deleteMessageResult ? await deleteMessageResult.promise() : await deleteMessageResult;
+        });
 
         // Then
         messages.sort((m1, m2) => m1.Body.localeCompare(m2.Body));
@@ -244,45 +216,39 @@ describe.each([
 
     it('should change message visibility', async () => {
         // Given
-        const sqsExtendedClientSend = new ExtendedSqsClient(sqs, s3, { bucketName });
-        const sqsExtendedClient = new ExtendedSqsClient(sqs, s3);
+        const sqsExtendedClientSend = new ExtendedSqsClient({ sqsClientConfig, s3ClientConfig, bucketName });
+        const sqsExtendedClient = new ExtendedSqsClient({ sqsClientConfig, s3ClientConfig });
 
         // When
-        const sendMessageResult = sqsExtendedClientSend.sendMessage({
+        await sqsExtendedClientSend.sendMessage({
             QueueUrl: queueUrl,
             MessageBody: largeMessageBody,
-        })
-        'promise' in sendMessageResult ? await sendMessageResult.promise() : await sendMessageResult;
+        });
 
-        const receiveMessageResult1 = sqsExtendedClient.receiveMessage({
+        const { Messages: messages1 } = await sqsExtendedClient.receiveMessage({
             QueueUrl: queueUrl,
-        })
-        const { Messages: messages1 } = 'promise' in receiveMessageResult1 ? await receiveMessageResult1.promise() : await receiveMessageResult1;
+        });
 
         // expect message to be invisible
-        const receiveMessageResult2 = sqsExtendedClient.receiveMessage({
+        const { Messages: messages2 } = await sqsExtendedClient.receiveMessage({
             QueueUrl: queueUrl,
-        })
-        const { Messages: messages2 } = 'promise' in receiveMessageResult2 ? await receiveMessageResult2.promise() : await receiveMessageResult2;
+        });
 
-        const changeVisibilityResult = sqsExtendedClient.changeMessageVisibility({
+        await sqsExtendedClient.changeMessageVisibility({
             QueueUrl: queueUrl,
             ReceiptHandle: messages1[0].ReceiptHandle,
             VisibilityTimeout: 0,
-        })
-        'promise' in changeVisibilityResult ? await changeVisibilityResult.promise() : await changeVisibilityResult;
+        });
 
-        // expect message to be invisible
-        const receiveMessageResult3 = sqsExtendedClient.receiveMessage({
+        // expect message to be visible again
+        const { Messages: messages3 } = await sqsExtendedClient.receiveMessage({
             QueueUrl: queueUrl,
-        })
-        const { Messages: messages3 } = 'promise' in receiveMessageResult3 ? await receiveMessageResult3.promise() : await receiveMessageResult3;
+        });
 
-        const deleteMessageResult = sqsExtendedClient.deleteMessage({
+        await sqsExtendedClient.deleteMessage({
             QueueUrl: queueUrl,
             ReceiptHandle: messages3[0].ReceiptHandle,
-        })
-        'promise' in deleteMessageResult ? await deleteMessageResult.promise() : await deleteMessageResult;
+        });
 
         // Then
         expect(messages1.length).toBe(1);
@@ -292,44 +258,38 @@ describe.each([
 
     it('should delete message', async () => {
         // Given
-        const sqsExtendedClientSend = new ExtendedSqsClient(sqs, s3, { bucketName });
-        const sqsExtendedClient = new ExtendedSqsClient(sqs, s3);
+        const sqsExtendedClientSend = new ExtendedSqsClient({ sqsClientConfig, s3ClientConfig, bucketName });
+        const sqsExtendedClient = new ExtendedSqsClient({ sqsClientConfig, s3ClientConfig });
 
         // When
-        const sendMessageResult = sqsExtendedClientSend.sendMessage({
+        await sqsExtendedClientSend.sendMessage({
             QueueUrl: queueUrl,
             MessageBody: largeMessageBody,
-        })
-        'promise' in sendMessageResult ? await sendMessageResult.promise() : await sendMessageResult;
+        });
 
-        const receiveMessageResult1 = sqsExtendedClient.receiveMessage({
+        const { Messages: messages1 } = await sqsExtendedClient.receiveMessage({
             QueueUrl: queueUrl,
-        })
-        const { Messages: messages1 } = 'promise' in receiveMessageResult1 ? await receiveMessageResult1.promise() : await receiveMessageResult1;
+        });
 
-        const changeVisibilityResult = sqsExtendedClient.changeMessageVisibility({
+        await sqsExtendedClient.changeMessageVisibility({
             QueueUrl: queueUrl,
             ReceiptHandle: messages1[0].ReceiptHandle,
             VisibilityTimeout: 0,
-        })
-        'promise' in changeVisibilityResult ? await changeVisibilityResult.promise() : await changeVisibilityResult;
+        });
 
-        const receiveMessageResult2 = sqsExtendedClient.receiveMessage({
+        const { Messages: messages2 } = await sqsExtendedClient.receiveMessage({
             QueueUrl: queueUrl,
-        })
-        const { Messages: messages2 } = 'promise' in receiveMessageResult2 ? await receiveMessageResult2.promise() : await receiveMessageResult2;
+        });
 
-        const deleteMessageResult = sqsExtendedClient.deleteMessage({
+        await sqsExtendedClient.deleteMessage({
             QueueUrl: queueUrl,
             ReceiptHandle: messages2[0].ReceiptHandle,
-        })
-        'promise' in deleteMessageResult ? await deleteMessageResult.promise() : await deleteMessageResult;
+        });
 
         // expect message to be deleted
-        const receiveMessageResult3 = sqsExtendedClient.receiveMessage({
+        const { Messages: messages3 } = await sqsExtendedClient.receiveMessage({
             QueueUrl: queueUrl,
-        })
-        const { Messages: messages3 } = 'promise' in receiveMessageResult3 ? await receiveMessageResult3.promise() : await receiveMessageResult3;
+        });
 
         // Then
         expect(messages1.length).toBe(1);
@@ -339,11 +299,11 @@ describe.each([
 
     it('should delete message batch', async () => {
         // Given
-        const sqsExtendedClientSend = new ExtendedSqsClient(sqs, s3, { bucketName });
-        const sqsExtendedClient = new ExtendedSqsClient(sqs, s3);
+        const sqsExtendedClientSend = new ExtendedSqsClient({ sqsClientConfig, s3ClientConfig, bucketName });
+        const sqsExtendedClient = new ExtendedSqsClient({ sqsClientConfig, s3ClientConfig });
 
         // When
-        const sendMessageResult = sqsExtendedClientSend.sendMessageBatch({
+        await sqsExtendedClientSend.sendMessageBatch({
             QueueUrl: queueUrl,
             Entries: [
                 {
@@ -355,35 +315,30 @@ describe.each([
                     MessageBody: 'small body',
                 },
             ],
-        })
-        'promise' in sendMessageResult ? await sendMessageResult.promise() : await sendMessageResult;
+        });
 
-        const receiveMessageResult1 = sqsExtendedClient.receiveMessage({
+        const { Messages: messages1 } = await sqsExtendedClient.receiveMessage({
             QueueUrl: queueUrl,
             MaxNumberOfMessages: 10,
-        })
-        const { Messages: messages1 } = 'promise' in receiveMessageResult1 ? await receiveMessageResult1.promise() : await receiveMessageResult1;
+        });
 
-        const changeVisibilityResult1 = sqsExtendedClient.changeMessageVisibility({
+        await sqsExtendedClient.changeMessageVisibility({
             QueueUrl: queueUrl,
             ReceiptHandle: messages1[0].ReceiptHandle,
             VisibilityTimeout: 0,
-        })
-        'promise' in changeVisibilityResult1 ? await changeVisibilityResult1.promise() : await changeVisibilityResult1;
-        const changeVisibilityResult2 = sqsExtendedClient.changeMessageVisibility({
+        });
+        await sqsExtendedClient.changeMessageVisibility({
             QueueUrl: queueUrl,
             ReceiptHandle: messages1[1].ReceiptHandle,
             VisibilityTimeout: 0,
-        })
-        'promise' in changeVisibilityResult2 ? await changeVisibilityResult2.promise() : await changeVisibilityResult2;
+        });
 
-        const receiveMessageResult2 = sqsExtendedClient.receiveMessage({
+        const { Messages: messages2 } = await sqsExtendedClient.receiveMessage({
             QueueUrl: queueUrl,
             MaxNumberOfMessages: 10,
-        })
-        const { Messages: messages2 } = 'promise' in receiveMessageResult2 ? await receiveMessageResult2.promise() : await receiveMessageResult2;
+        });
 
-        const deleteMessageResult = sqsExtendedClient.deleteMessageBatch({
+        await sqsExtendedClient.deleteMessageBatch({
             QueueUrl: queueUrl,
             Entries: [
                 {
@@ -395,15 +350,13 @@ describe.each([
                     ReceiptHandle: messages2[1].ReceiptHandle,
                 },
             ],
-        })
-        'promise' in deleteMessageResult ? await deleteMessageResult.promise() : await deleteMessageResult;
+        });
 
         // expect 2 messages to be deleted
-        const receiveMessageResult3 = sqsExtendedClient.receiveMessage({
+        const { Messages: messages3 } = await sqsExtendedClient.receiveMessage({
             QueueUrl: queueUrl,
             MaxNumberOfMessages: 10,
-        })
-        const { Messages: messages3 } = 'promise' in receiveMessageResult3 ? await receiveMessageResult3.promise() : await receiveMessageResult3;
+        });
 
         // Then
         expect(messages1.length).toBe(2);
