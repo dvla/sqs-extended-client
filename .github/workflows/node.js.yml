@@ -16,7 +16,7 @@ jobs:
 
     strategy:
       matrix:
-        node-version: [18.x]
+        node-version: [16.x, 18.x]
         # See supported Node.js release schedule at https://nodejs.org/en/about/releases/
 
     steps:
@@ -36,6 +36,9 @@ jobs:
         
         echo "Waiting for LocalStack startup..."  # Wait 30 seconds for the LocalStack container
         localstack wait -t 30                     # to become ready before timing out 
-        echo "Startup complete"          
+        echo "Startup complete"     
+    - name: Sleep for 30 seconds - Localstack may still be settling
+      run: sleep 30s
+      shell: bash
     - name: Run some Tests against LocalStack
       run: npm run system-test      
