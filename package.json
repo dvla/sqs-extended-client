@@ -11,8 +11,8 @@
         "url": "https://github.com/dvla/sqs-extended-client.git"
     },
     "scripts": {
-        "test": "jest --testPathPattern='src/.*'",
-        "system-test": "jest --testPathPattern='system-test/.*'"
+        "test": "jest --testPathIgnorePatterns='system-test'",
+        "system-test": "jest --testPathPattern='/system-test/'"
     },
     "dependencies": {
         "uuid": "^9.0.1"
