@@ -41,4 +41,6 @@ jobs:
       run: sleep 30s
       shell: bash
     - name: Run some Tests against LocalStack
-      run: npm run system-test      
+      run: |
+        export S3_ENDPOINT=http://127.0.0.1:4566
+        npm run system-test      
