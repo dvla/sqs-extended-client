@@ -249,6 +249,7 @@ class ExtendedSqsClient {
         let s3MessageKey;
 
         if (!sendObj.s3Content || existingS3MessageKey) {
+            s3MessageKey = existingS3MessageKey
             sendParams.MessageBody = sendObj.messageBody || existingS3MessageKey.StringValue;
         } else {
             s3MessageKey = uuidv4();
